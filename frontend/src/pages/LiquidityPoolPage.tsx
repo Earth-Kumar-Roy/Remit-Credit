@@ -21,6 +21,7 @@ import {
   PoolStatsData,
   ProtocolConfigData,
 } from '@/hooks/useBorrowerProfile';
+import { KycStanding } from '@/hooks/useKycStatus';
 import { ProtocolEventItem } from '@/hooks/useProtocolEvents';
 import { formatBps, shortenAddress } from '@/utils/stroops';
 
@@ -32,6 +33,7 @@ interface LiquidityPoolPageProps {
   lpDeposit: bigint;
   lpShares: bigint;
   lpPosition?: LpPositionBreakdown;
+  kycStatus: KycStanding;
   events: ProtocolEventItem[];
   isEventsLoading: boolean;
   onRefreshAll: () => Promise<void>;
@@ -47,6 +49,7 @@ export const LiquidityPoolPage: React.FC<LiquidityPoolPageProps> = ({
   lpDeposit,
   lpShares,
   lpPosition,
+  kycStatus,
   events,
   isEventsLoading,
   onRefreshAll,
@@ -145,10 +148,11 @@ export const LiquidityPoolPage: React.FC<LiquidityPoolPageProps> = ({
         </div>
       </section>
 
-      {/* LP Metrics & Distinct Personal Position Controls */}
+      {/* LP Metrics & Distinct Personal Position Controls (SEP-12 KYC Gated) */}
       <LiquidityPoolCard
         isConnected={Boolean(address)}
         hasActiveLoan={Boolean(activeLoan)}
+        kycStatus={kycStatus}
         poolStats={poolStats}
         config={config}
         usdcBalance={usdcBalance}

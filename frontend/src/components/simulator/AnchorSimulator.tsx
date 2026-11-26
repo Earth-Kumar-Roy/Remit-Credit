@@ -6,6 +6,7 @@ import {
   ExternalLink,
   Globe2,
   Loader2,
+  Lock,
   Receipt,
   Send,
   ShieldCheck,
@@ -22,10 +23,12 @@ import {
 } from '@stellar/stellar-sdk';
 import { STELLAR_CONFIG, getExplorerTxUrl } from '@/config/stellar';
 import { useWallet } from '@/context/WalletContext';
+import { KycStanding } from '@/hooks/useKycStatus';
 import { formatBps, formatUsdc, parseUsdcToStroops } from '@/utils/stroops';
 
 interface AnchorSimulatorProps {
   keeperOnline: boolean;
+  kycStatus?: KycStanding;
   usdcBalance?: bigint;
   remitFeeBps?: number;
   remitFeeCap?: bigint;
@@ -85,13 +88,14 @@ function calculateGrossForExactNet(
 
 export const AnchorSimulator: React.FC<AnchorSimulatorProps> = ({
   keeperOnline,
+  kycStatus = 'UNVERIFIED',
   usdcBalance,
   remitFeeBps = 200,
   remitFeeCap = DEFAULT_FEE_CAP_STROOPS,
   waterfallSplitBps = 4000,
   onSettled,
 }) => {
-  const { address, isConnecting, connect, signTx } = useWallet();
+  const { address, isConnecting, connect, signTx, setActivePage } = useWallet();
   const [beneficiary, setBeneficiary] = useState<string>('');
   const [amountUsdc, setAmountUsdc] = useState<string>('100');
   const [stepLabel, setStepLabel] = useState<string>('');
@@ -103,6 +107,8 @@ export const AnchorSimulator: React.FC<AnchorSimulatorProps> = ({
     netDeliveredUsdc: number;
   } | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const isKycVerified = Boolean(address) && kycStatus === 'VERIFIED';
 
   useEffect(() => {
     if (address && beneficiary.trim().toUpperCase() === address.trim().toUpperCase()) {
@@ -161,6 +167,15 @@ export const AnchorSimulator: React.FC<AnchorSimulatorProps> = ({
 
     if (!address) {
       setErrorMsg('Connect your Freighter wallet to send a cross-border remittance.');
+      return;
+    }
+
+    if (!isKycVerified) {
+      setErrorMsg(
+        kycStatus === 'BANNED'
+          ? 'Your wallet is suspended due to hitting 6 overdue strikes.'
+          : 'Complete SEP-12 KYC verification before sending cross-border remittances.'
+      );
       return;
     }
 
@@ -293,7 +308,7 @@ export const AnchorSimulator: React.FC<AnchorSimulatorProps> = ({
       </div>
       <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
       <span className="pointer-events-none absolute left-4 top-3 select-none font-mono text-[10px] text-cyan-400/70">
-        ⌜ SEP-31_WIRE_ROUTER // EXACT_DELIVERY · MIN $100 ⌝
+        ⌜ SEP-31_WIRE_ROUTER // EXACT_DELIVERY · MIN $100 · KYC_REQUIRED ⌝
       </span>
       <span className="pointer-events-none absolute right-4 top-3 select-none font-mono text-[10px] text-amber-400/70">
         [+]
@@ -323,11 +338,12 @@ export const AnchorSimulator: React.FC<AnchorSimulatorProps> = ({
               <button
                 key={preset}
                 type="button"
+                disabled={Boolean(address) && !isKycVerified}
                 onClick={() => {
                   setAmountUsdc(String(preset));
                   setErrorMsg(null);
                 }}
-                className={`rounded-lg border px-2.5 py-1 text-[11px] font-bold transition ${
+                className={`rounded-lg border px-2.5 py-1 text-[11px] font-bold transition disabled:cursor-not-allowed disabled:opacity-45 ${
                   Number(amountUsdc) === preset
                     ? 'border-amber-400 bg-amber-400/15 text-amber-300'
                     : 'border-slate-800 bg-slate-950/80 text-cyan-200 hover:border-cyan-400/50'
@@ -353,8 +369,8 @@ export const AnchorSimulator: React.FC<AnchorSimulatorProps> = ({
                 setBeneficiary(e.target.value);
                 setErrorMsg(null);
               }}
-              disabled={isSending}
-              className="w-full rounded-xl border border-slate-700/90 bg-slate-950 px-3.5 py-2.5 font-mono text-xs text-slate-100 placeholder-slate-600 focus:border-cyan-400 focus:outline-none"
+              disabled={isSending || (Boolean(address) && !isKycVerified)}
+              className="w-full rounded-xl border border-slate-700/90 bg-slate-950 px-3.5 py-2.5 font-mono text-xs text-slate-100 placeholder-slate-600 focus:border-cyan-400 focus:outline-none disabled:opacity-50"
             />
           </div>
 
@@ -371,8 +387,8 @@ export const AnchorSimulator: React.FC<AnchorSimulatorProps> = ({
                 setAmountUsdc(e.target.value);
                 setErrorMsg(null);
               }}
-              disabled={isSending}
-              className="tabular-nums w-full rounded-xl border border-slate-700/90 bg-slate-950 px-3.5 py-2.5 font-mono text-sm font-bold text-white focus:border-amber-400 focus:outline-none"
+              disabled={isSending || (Boolean(address) && !isKycVerified)}
+              className="tabular-nums w-full rounded-xl border border-slate-700/90 bg-slate-950 px-3.5 py-2.5 font-mono text-sm font-bold text-white focus:border-amber-400 focus:outline-none disabled:opacity-50"
             />
           </div>
 
@@ -381,6 +397,7 @@ export const AnchorSimulator: React.FC<AnchorSimulatorProps> = ({
               type="submit"
               disabled={
                 !address ||
+                !isKycVerified ||
                 isSending ||
                 isSelfTransfer ||
                 isBelowMinimum ||
@@ -393,6 +410,11 @@ export const AnchorSimulator: React.FC<AnchorSimulatorProps> = ({
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
                   <span>{stepLabel || 'Sending...'}</span>
+                </>
+              ) : !isKycVerified && address ? (
+                <>
+                  <Lock className="h-4 w-4" />
+                  <span>KYC Locked</span>
                 </>
               ) : (
                 <>
@@ -481,8 +503,8 @@ export const AnchorSimulator: React.FC<AnchorSimulatorProps> = ({
             <div className="flex items-center gap-2">
               <Wallet className="h-4 w-4 shrink-0 text-cyan-400" />
               <span>
-                Connect your Freighter wallet to verify your USDC balance and dispatch an atomic
-                cross-border remittance.
+                Connect your Freighter wallet and complete SEP-12 KYC verification to dispatch
+                cross-border remittances.
               </span>
             </div>
             <button
@@ -494,6 +516,29 @@ export const AnchorSimulator: React.FC<AnchorSimulatorProps> = ({
               <Wallet className="h-3.5 w-3.5" />
               <span>{isConnecting ? 'Connecting...' : 'Connect Freighter'}</span>
             </button>
+          </div>
+        )}
+
+        {address && !isKycVerified && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/40 bg-amber-950/50 px-4 py-3 text-xs text-amber-200">
+            <div className="flex items-center gap-2">
+              <Lock className="h-4 w-4 shrink-0 text-amber-400" />
+              <span>
+                {kycStatus === 'BANNED'
+                  ? 'Account Suspended (6 Overdue Strikes): Remittance transfers are disabled until rehabilitated.'
+                  : 'SEP-12 KYC Required: Complete identity attestation before sending cross-border remittances.'}
+              </span>
+            </div>
+            {kycStatus !== 'BANNED' && (
+              <button
+                type="button"
+                onClick={() => setActivePage('kyc')}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-amber-400 px-3.5 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-slate-950 transition hover:bg-amber-300"
+              >
+                <ShieldCheck className="h-3.5 w-3.5" />
+                <span>Verify KYC Now</span>
+              </button>
+            )}
           </div>
         )}
 

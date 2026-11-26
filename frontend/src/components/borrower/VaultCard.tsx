@@ -60,7 +60,7 @@ export function projectLiveLoanState(
       ? loan.periodDurationSecs
       : config.loanDurationSecs > 0n
       ? config.loanDurationSecs
-      : 180n;
+      : 2_592_000n;
   let liveLatePeriods = loan.latePeriods;
   let liveTotalOwed = loan.totalOwed;
   let liveRemainingDebt = loan.remainingDebt;
@@ -120,7 +120,7 @@ export const VaultCard: React.FC<VaultCardProps> = ({
     return () => clearInterval(interval);
   }, []);
 
-  const isKycOk = kycStatus === 'VERIFIED' || profile.isKycVerified;
+  const isKycOk = kycStatus === 'VERIFIED';
   const isBanned = kycStatus === 'BANNED' || profile.hasDefaulted;
   const hasPoolLiquidity = poolStats.availableLiquidity > 0n;
   const hasActiveLpPosition = lpShares > 0n;
@@ -323,7 +323,7 @@ export const VaultCard: React.FC<VaultCardProps> = ({
                     <CalendarClock className="h-3.5 w-3.5" />
                     {liveLoan.liveLatePeriods > 0
                       ? 'NEXT STRIKE WINDOW (IST)'
-                      : 'PERIOD DEADLINE (IST)'}
+                      : '30-DAY MATURITY (IST)'}
                   </div>
                   <div className="tabular-nums mt-0.5 font-bold text-white">
                     {formatUnixToIST(liveLoan.effectiveDueAt)}
@@ -354,7 +354,7 @@ export const VaultCard: React.FC<VaultCardProps> = ({
                   AVAILABLE CREDIT CEILING
                 </span>
                 <span className="text-cyan-300">
-                  FEE: {formatBps(config.loanFeeBps)} · TERM: 2M–30D
+                  FEE: {formatBps(config.loanFeeBps)} · TERM: FIXED 30D
                 </span>
               </div>
 
@@ -493,6 +493,15 @@ export const VaultCard: React.FC<VaultCardProps> = ({
               <ArrowUpRight className="h-4 w-4" />
             </button>
           </div>
+        ) : !isKycOk ? (
+          <button
+            type="button"
+            onClick={() => setActivePage('kyc')}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-amber-500/45 bg-amber-500/15 px-4 py-3 font-mono text-xs font-bold uppercase tracking-wider text-amber-200 transition hover:bg-amber-500/25"
+          >
+            <ShieldAlert className="h-4 w-4 text-amber-400" />
+            <span>[ ◈ Complete SEP-12 KYC to Unlock Borrowing ]</span>
+          </button>
         ) : hasActiveLpPosition ? (
           <div className="space-y-2.5 rounded-xl border border-cyan-500/40 bg-cyan-950/40 p-3.5 text-xs text-cyan-200">
             <div className="flex items-start gap-2">
@@ -511,15 +520,6 @@ export const VaultCard: React.FC<VaultCardProps> = ({
               <span>Withdraw Your LP Liquidity ({formatUsdc(lpDeposit)} USDC)</span>
             </button>
           </div>
-        ) : !isKycOk ? (
-          <button
-            type="button"
-            onClick={() => setActivePage('kyc')}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-amber-500/45 bg-amber-500/15 px-4 py-3 font-mono text-xs font-bold uppercase tracking-wider text-amber-200 transition hover:bg-amber-500/25"
-          >
-            <ShieldAlert className="h-4 w-4 text-amber-400" />
-            <span>[ ◈ Complete SEP-12 KYC to Unlock Borrowing ]</span>
-          </button>
         ) : profile.needsCleanCycle ? (
           <div className="flex items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-950/50 px-4 py-3 text-xs text-amber-200">
             <Clock className="h-4 w-4 shrink-0 text-amber-400" />

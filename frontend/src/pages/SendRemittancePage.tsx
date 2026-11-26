@@ -17,6 +17,7 @@ import { AnchorSimulator } from '@/components/simulator/AnchorSimulator';
 import { getExplorerContractUrl, getExplorerTxUrl, STELLAR_CONFIG } from '@/config/stellar';
 import { useWallet } from '@/context/WalletContext';
 import { PoolStatsData, ProtocolConfigData } from '@/hooks/useBorrowerProfile';
+import { KycStanding } from '@/hooks/useKycStatus';
 import { ProtocolEventItem } from '@/hooks/useProtocolEvents';
 import { formatBps, formatUsdc, shortenAddress } from '@/utils/stroops';
 
@@ -24,6 +25,7 @@ interface SendRemittancePageProps {
   poolStats: PoolStatsData;
   config: ProtocolConfigData;
   usdcBalance: bigint;
+  kycStatus: KycStanding;
   events: ProtocolEventItem[];
   isEventsLoading: boolean;
   keeperOnline: boolean;
@@ -35,6 +37,7 @@ const ITEMS_PER_PAGE = 10;
 export const SendRemittancePage: React.FC<SendRemittancePageProps> = ({
   config,
   usdcBalance,
+  kycStatus,
   events,
   isEventsLoading,
   keeperOnline,
@@ -171,9 +174,10 @@ export const SendRemittancePage: React.FC<SendRemittancePageProps> = ({
         </div>
       </section>
 
-      {/* Main Quotation & Atomic Wire Transfer Box */}
+      {/* Main Quotation & Atomic Wire Transfer Box (SEP-12 KYC Gated) */}
       <AnchorSimulator
         keeperOnline={keeperOnline}
+        kycStatus={kycStatus}
         usdcBalance={usdcBalance}
         remitFeeBps={config.remitFeeBps}
         remitFeeCap={config.remitFeeCap}

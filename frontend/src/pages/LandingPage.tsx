@@ -9,7 +9,6 @@ import {
   Globe2,
   Landmark,
   Layers,
-  Lock,
   ShieldCheck,
   Sliders,
   SplitSquareVertical,
@@ -26,16 +25,6 @@ interface LandingPageProps {
   poolStats: PoolStatsData;
   config: ProtocolConfigData;
   kycStatus: KycStanding;
-}
-
-function formatDurationText(secsBig: bigint): string {
-  const secs = Number(secsBig);
-  if (secs >= 86400) {
-    const days = Math.round(secs / 86400);
-    return `${days}-day`;
-  }
-  const mins = Math.max(1, Math.round(secs / 60));
-  return `${mins}-minute`;
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({
@@ -330,7 +319,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         </div>
       </section>
 
-      {/* SECTION 01: LIVE ON-CHAIN TELEMETRY VAULT (5 TECTONIC SLABS) */}
+      {/* SECTION 01: LIVE ON-CHAIN TELEMETRY VAULT (4 TECTONIC SLABS) */}
       <section className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2 font-mono text-xs">
           <div className="flex items-center gap-2 text-cyan-300">
@@ -340,7 +329,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           <span className="text-slate-500">+ REAL-TIME SOROBAN RPC STATE +</span>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-2xl border border-slate-800/90 bg-slate-900/85 p-5 shadow-lg transition hover:border-amber-500/40">
             <div className="flex items-center justify-between font-mono text-[10px] text-slate-400">
               <span>[01] VAULT TOTAL TVL</span>
@@ -367,22 +356,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-800/90 bg-slate-900/85 p-5 shadow-lg transition hover:border-emerald-500/40">
-            <div className="flex items-center justify-between font-mono text-[10px] text-slate-400">
-              <span>[03] BACKSTOP RESERVE</span>
-              <span className="text-emerald-400">+</span>
-            </div>
-            <div className="tabular-nums mt-2 text-2xl font-bold text-emerald-400">
-              ${formatUsdc(poolStats.backstopReserve)}
-            </div>
-            <div className="mt-1 font-mono text-[11px] text-emerald-300/80">
-              FIRST-LOSS LP SHIELD
-            </div>
-          </div>
-
           <div className="rounded-2xl border border-slate-800/90 bg-slate-900/85 p-5 shadow-lg transition hover:border-amber-500/40">
             <div className="flex items-center justify-between font-mono text-[10px] text-slate-400">
-              <span>[04] 4-TIER CAPS</span>
+              <span>[03] 4-TIER CAPS</span>
               <span className="text-amber-400">+</span>
             </div>
             <div className="tabular-nums mt-2 text-2xl font-bold text-white">
@@ -393,9 +369,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-800/90 bg-slate-900/85 p-5 shadow-lg transition hover:border-cyan-500/40 sm:col-span-2 lg:col-span-1">
+          <div className="rounded-2xl border border-slate-800/90 bg-slate-900/85 p-5 shadow-lg transition hover:border-cyan-500/40">
             <div className="flex items-center justify-between font-mono text-[10px] text-slate-400">
-              <span>[05] WATERFALL SPLIT</span>
+              <span>[04] WATERFALL SPLIT</span>
               <span className="text-cyan-400">+</span>
             </div>
             <div className="tabular-nums mt-2 text-2xl font-bold text-amber-300">
@@ -440,7 +416,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <code className="text-slate-200">send_remittance()</code>.
             </p>
             <div className="mt-3 rounded-lg bg-slate-950 px-3 py-2 font-mono text-[11px] text-amber-300">
-              Backstop Fee: {formatBps(config.remitFeeBps)} (Cap ${formatUsdc(config.remitFeeCap, 0)})
+              Protocol Fee: {formatBps(config.remitFeeBps)} (Cap ${formatUsdc(config.remitFeeCap, 0)})
             </div>
           </div>
 
@@ -549,7 +525,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 {formatBps(config.waterfallSplitBps)} Loan Split (100% if Late)
               </div>
               <p className="mt-0.5 text-[11px] text-slate-400">
-                Settles principal + pro-rata LP &amp; Backstop yield.
+                Settles principal + pro-rata LP yield.
               </p>
             </div>
           </div>
@@ -848,10 +824,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <tbody className="divide-y divide-slate-800/70 font-mono">
               <tr className="hover:bg-slate-800/40">
                 <td className="px-5 py-3.5 font-semibold text-white">Borrower Loan Maturity</td>
-                <td className="px-5 py-3.5 text-amber-300">
-                  2 Mins – 30 Days (Default {formatDurationText(config.loanDurationSecs)})
-                </td>
-                <td className="px-5 py-3.5 text-slate-400">borrow(beneficiary, principal, duration_secs)</td>
+                <td className="px-5 py-3.5 text-amber-300">Fixed 30 Days</td>
+                <td className="px-5 py-3.5 text-slate-400">borrow(beneficiary, principal, 2_592_000)</td>
                 <td className="px-5 py-3.5 text-right text-emerald-400">ENFORCED</td>
               </tr>
               <tr className="hover:bg-slate-800/40">
@@ -859,16 +833,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 <td className="px-5 py-3.5 text-slate-200">
                   {formatBps(config.remitFeeBps)} (Capped at ${formatUsdc(config.remitFeeCap, 0)} USDC)
                 </td>
-                <td className="px-5 py-3.5 text-slate-400">100% Routed to First-Loss Backstop</td>
+                <td className="px-5 py-3.5 text-slate-400">Protocol Risk &amp; Reserve Routing</td>
                 <td className="px-5 py-3.5 text-right text-emerald-400">ACTIVE</td>
               </tr>
               <tr className="hover:bg-slate-800/40">
                 <td className="px-5 py-3.5 font-semibold text-white">Loan Fee &amp; Yield Split</td>
                 <td className="px-5 py-3.5 text-cyan-300">
-                  {formatBps(config.loanFeeBps)} Flat ({formatBps(10000 - config.backstopFeeBps)} LP /{' '}
-                  {formatBps(config.backstopFeeBps)} Backstop)
+                  {formatBps(config.loanFeeBps)} Flat ({formatBps(10000 - config.backstopFeeBps)} LP Yield)
                 </td>
-                <td className="px-5 py-3.5 text-slate-400">Pro-Rata Share Yield + Backstop Buffer</td>
+                <td className="px-5 py-3.5 text-slate-400">Pro-Rata Share Yield Distribution</td>
                 <td className="px-5 py-3.5 text-right text-emerald-400">ACTIVE</td>
               </tr>
               <tr className="hover:bg-slate-800/40">
@@ -892,20 +865,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         </div>
 
         {/* Bottom Guardrails & Verification Strip */}
-        <div className="grid grid-cols-1 gap-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-5 md:grid-cols-3">
-          <div className="flex items-start gap-3">
-            <Lock className="mt-0.5 h-5 w-5 shrink-0 text-emerald-400" />
-            <div>
-              <h4 className="text-xs font-bold uppercase tracking-wider text-white">
-                Self-Funded Backstop Shield
-              </h4>
-              <p className="mt-1 text-xs leading-relaxed text-slate-400">
-                {formatBps(config.remitFeeBps)} remittance fees + {formatBps(config.backstopFeeBps)}{' '}
-                loan fee cuts absorb defaults before LP capital is impacted.
-              </p>
-            </div>
-          </div>
-
+        <div className="grid grid-cols-1 gap-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-5 md:grid-cols-2">
           <div className="flex items-start gap-3">
             <Globe2 className="mt-0.5 h-5 w-5 shrink-0 text-cyan-400" />
             <div>

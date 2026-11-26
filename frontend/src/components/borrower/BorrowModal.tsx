@@ -5,8 +5,9 @@ import {
   Loader2,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
   CalendarClock,
-  Clock,
+  Lock,
   Sparkles,
 } from 'lucide-react';
 import { projectLiveLoanState } from '@/components/borrower/VaultCard';
@@ -32,17 +33,7 @@ interface BorrowModalProps {
   onSuccess: () => Promise<void>;
 }
 
-const MIN_DURATION_SECS = 120; // 2 minutes
-const MAX_DURATION_SECS = 2_592_000; // 30 days
-
-const DURATION_PRESETS: { label: string; secs: number }[] = [
-  { label: '2m (Test)', secs: 120 },
-  { label: '3m (Test)', secs: 180 },
-  { label: '1h', secs: 3_600 },
-  { label: '7d', secs: 604_800 },
-  { label: '14d', secs: 1_209_600 },
-  { label: '30d (Prod)', secs: 2_592_000 },
-];
+const FIXED_LOAN_DURATION_SECS = 2_592_000; // Fixed 30-day loan maturity
 
 function stroopsToInputString(stroops: bigint): string {
   if (stroops <= 0n) return '';
@@ -65,13 +56,6 @@ export const BorrowModal: React.FC<BorrowModalProps> = ({
 }) => {
   const { requestLoan, repayDirect } = useRemitContract();
   const [amountInput, setAmountInput] = useState<string>('');
-  const [selectedDurationSecs, setSelectedDurationSecs] = useState<number>(
-    Number(config.loanDurationSecs || 180n)
-  );
-  const [customValue, setCustomValue] = useState<string>(
-    String(Math.max(2, Math.round(Number(config.loanDurationSecs || 180n) / 60)))
-  );
-  const [customUnit, setCustomUnit] = useState<'minutes' | 'hours' | 'days'>('minutes');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [txDone, setTxDone] = useState<boolean>(false);
@@ -98,28 +82,12 @@ export const BorrowModal: React.FC<BorrowModalProps> = ({
     setErrorMsg(null);
     setTxDone(false);
 
-    const defaultSecs = Math.min(
-      MAX_DURATION_SECS,
-      Math.max(MIN_DURATION_SECS, Number(config.loanDurationSecs || 180n))
-    );
-    setSelectedDurationSecs(defaultSecs);
-    if (defaultSecs % 86_400 === 0) {
-      setCustomUnit('days');
-      setCustomValue(String(defaultSecs / 86_400));
-    } else if (defaultSecs % 3_600 === 0) {
-      setCustomUnit('hours');
-      setCustomValue(String(defaultSecs / 3_600));
-    } else {
-      setCustomUnit('minutes');
-      setCustomValue(String(Math.max(2, Math.round(defaultSecs / 60))));
-    }
-
     if (mode === 'repay' && prefillFullRepay && ceilingStroops > 0n) {
       setAmountInput(stroopsToInputString(ceilingStroops));
     } else {
       setAmountInput('');
     }
-  }, [isOpen, mode, prefillFullRepay, ceilingStroops, config.loanDurationSecs]);
+  }, [isOpen, mode, prefillFullRepay, ceilingStroops]);
 
   if (!isOpen) return null;
 
@@ -132,45 +100,15 @@ export const BorrowModal: React.FC<BorrowModalProps> = ({
     parsedStroops = 0n;
   }
 
+  const feeBps = BigInt(config.loanFeeBps || 250);
   const originationFeeStroops =
-    mode === 'borrow' && parsedStroops > 0n
-      ? (parsedStroops * BigInt(config.loanFeeBps)) / 10_000n
-      : 0n;
+    mode === 'borrow' && parsedStroops > 0n ? (parsedStroops * feeBps) / 10_000n : 0n;
   const totalRepaymentObligation = parsedStroops + originationFeeStroops;
+  const perStrikePenaltyStroops =
+    mode === 'borrow' && parsedStroops > 0n ? (parsedStroops * feeBps) / 10_000n : 0n;
+  const maxSixStrikeDebtStroops = totalRepaymentObligation + perStrikePenaltyStroops * 6n;
 
-  const isDurationValid =
-    selectedDurationSecs >= MIN_DURATION_SECS && selectedDurationSecs <= MAX_DURATION_SECS;
-
-  const estimatedDueUnix = Math.floor(Date.now() / 1000) + selectedDurationSecs;
-
-  const handleSelectPreset = (secs: number) => {
-    setSelectedDurationSecs(secs);
-    setErrorMsg(null);
-    if (secs % 86_400 === 0) {
-      setCustomUnit('days');
-      setCustomValue(String(secs / 86_400));
-    } else if (secs % 3_600 === 0) {
-      setCustomUnit('hours');
-      setCustomValue(String(secs / 3_600));
-    } else {
-      setCustomUnit('minutes');
-      setCustomValue(String(Math.round(secs / 60)));
-    }
-  };
-
-  const handleCustomDurationChange = (valStr: string, unit: 'minutes' | 'hours' | 'days') => {
-    setCustomValue(valStr);
-    setCustomUnit(unit);
-    setErrorMsg(null);
-
-    const num = Number(valStr);
-    if (!Number.isFinite(num) || num <= 0) {
-      setSelectedDurationSecs(0);
-      return;
-    }
-    const multiplier = unit === 'days' ? 86_400 : unit === 'hours' ? 3_600 : 60;
-    setSelectedDurationSecs(Math.round(num * multiplier));
-  };
+  const estimatedDueUnix = Math.floor(Date.now() / 1000) + FIXED_LOAN_DURATION_SECS;
 
   const handleSetFraction = (pct: bigint) => {
     const target = (ceilingStroops * pct) / 100n;
@@ -192,13 +130,9 @@ export const BorrowModal: React.FC<BorrowModalProps> = ({
         );
       }
 
-      if (mode === 'borrow' && !isDurationValid) {
-        throw new Error('Loan duration must be between 2 minutes and 30 days.');
-      }
-
       setIsSubmitting(true);
       if (mode === 'borrow') {
-        await requestLoan(stroops, BigInt(selectedDurationSecs));
+        await requestLoan(stroops, BigInt(FIXED_LOAN_DURATION_SECS));
       } else {
         await repayDirect(stroops);
       }
@@ -219,18 +153,18 @@ export const BorrowModal: React.FC<BorrowModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 p-4 backdrop-blur-md">
-      <div className="relative w-full max-w-md overflow-hidden rounded-2xl border border-slate-800/90 bg-[#080e1a] p-6 shadow-[0_0_50px_rgba(0,0,0,0.85)]">
+      <div className="relative max-h-[92vh] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-800/90 bg-[#080e1a] p-6 shadow-[0_0_50px_rgba(0,0,0,0.85)]">
         {/* Top Accent Line & Corner Crosshairs */}
         <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-amber-400/60 to-transparent" />
         <span className="pointer-events-none absolute left-3 top-2 select-none font-mono text-[9px] text-cyan-400/60">
-          ⌜ TX_EXEC // {mode === 'borrow' ? 'BORROW_V3' : 'REPAY_V3'} ⌝
+          ⌜ TX_EXEC // {mode === 'borrow' ? 'BORROW_30D_V3' : 'REPAY_V3'} ⌝
         </span>
 
         <div className="mt-2 flex items-center justify-between border-b border-slate-800/90 pb-4">
           <div>
             <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-amber-400">
               <Sparkles className="h-3 w-3" />
-              <span>{mode === 'borrow' ? 'SOROBAN CREDIT DRAW' : 'DIRECT VAULT SETTLEMENT'}</span>
+              <span>{mode === 'borrow' ? 'SOROBAN 30-DAY CREDIT DRAW' : 'DIRECT VAULT SETTLEMENT'}</span>
             </div>
             <h3 className="mt-0.5 text-lg font-bold tracking-tight text-white">
               {mode === 'borrow'
@@ -241,7 +175,7 @@ export const BorrowModal: React.FC<BorrowModalProps> = ({
             </h3>
             <p className="text-xs text-slate-400">
               {mode === 'borrow'
-                ? '0% crypto collateral · Funded from LP Vault & repaid via remittance waterfall'
+                ? '0% crypto collateral · Fixed 30-day maturity · Auto-repaid via remittance waterfall'
                 : 'Settle active loan balance directly from your Freighter USDC wallet'}
             </p>
           </div>
@@ -303,110 +237,80 @@ export const BorrowModal: React.FC<BorrowModalProps> = ({
             </div>
           </div>
 
-          {/* Borrower-Selected Loan Period Box (2 mins to 30 days) */}
-          {mode === 'borrow' && (
-            <div className="rounded-xl border border-slate-800/90 bg-slate-900/75 p-3.5">
-              <div className="mb-2 flex items-center justify-between font-mono text-[11px]">
-                <span className="inline-flex items-center gap-1.5 uppercase tracking-wider text-slate-300">
-                  <Clock className="h-3.5 w-3.5 text-cyan-400" />
-                  02 // Term (2m – 30d)
-                </span>
-                <span className="rounded bg-cyan-500/15 px-2 py-0.5 font-bold text-cyan-300 ring-1 ring-cyan-500/30">
-                  {selectedDurationSecs >= 86_400
-                    ? `${(selectedDurationSecs / 86_400).toFixed(1).replace(/\.0$/, '')}d`
-                    : selectedDurationSecs >= 3_600
-                    ? `${(selectedDurationSecs / 3_600).toFixed(1).replace(/\.0$/, '')}h`
-                    : `${Math.round(selectedDurationSecs / 60)}m`}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-3 gap-1.5 font-mono">
-                {DURATION_PRESETS.map((preset) => {
-                  const active = selectedDurationSecs === preset.secs;
-                  return (
-                    <button
-                      key={preset.label}
-                      type="button"
-                      disabled={isSubmitting || txDone}
-                      onClick={() => handleSelectPreset(preset.secs)}
-                      className={`rounded-lg border py-1.5 text-[11px] font-semibold transition ${
-                        active
-                          ? 'border-cyan-400 bg-cyan-500/20 text-cyan-200 shadow-[0_0_12px_rgba(34,211,238,0.2)]'
-                          : 'border-slate-800 bg-slate-950/80 text-slate-400 hover:border-slate-700 hover:text-white'
-                      }`}
-                    >
-                      {preset.label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="mt-2.5 flex gap-2 font-mono">
-                <input
-                  type="number"
-                  min="1"
-                  step="1"
-                  value={customValue}
-                  disabled={isSubmitting || txDone}
-                  onChange={(e) => handleCustomDurationChange(e.target.value, customUnit)}
-                  placeholder="Duration"
-                  className="tabular-nums w-1/2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs font-bold text-white focus:border-cyan-400 focus:outline-none"
-                />
-                <select
-                  value={customUnit}
-                  disabled={isSubmitting || txDone}
-                  onChange={(e) =>
-                    handleCustomDurationChange(
-                      customValue,
-                      e.target.value as 'minutes' | 'hours' | 'days'
-                    )
-                  }
-                  className="w-1/2 rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-xs font-semibold text-slate-200 focus:border-cyan-400 focus:outline-none"
-                >
-                  <option value="minutes">Minutes (min 2)</option>
-                  <option value="hours">Hours</option>
-                  <option value="days">Days (max 30)</option>
-                </select>
-              </div>
-
-              {!isDurationValid && (
-                <p className="mt-1.5 font-mono text-[11px] text-rose-400">
-                  Enter a term between 2 minutes (120s) and 30 days (43,200m).
-                </p>
-              )}
-            </div>
-          )}
-
           {mode === 'borrow' ? (
-            <div className="space-y-2 rounded-xl border border-slate-800/90 bg-slate-950/90 p-3.5 font-mono text-xs">
-              <div className="flex justify-between text-slate-400">
-                <span>PERIOD FEE ({formatBps(config.loanFeeBps)})</span>
-                <span className="tabular-nums text-slate-200">
-                  {formatUsdc(originationFeeStroops)} USDC
-                </span>
+            <>
+              {/* Fixed 30-Day Maturity & Obligation Breakdown */}
+              <div className="space-y-2.5 rounded-xl border border-slate-800/90 bg-slate-950/90 p-3.5 font-mono text-xs">
+                <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
+                  <span className="inline-flex items-center gap-1.5 text-slate-300">
+                    <Lock className="h-3.5 w-3.5 text-cyan-400" />
+                    FIXED MATURITY TERM
+                  </span>
+                  <span className="rounded bg-cyan-500/15 px-2 py-0.5 font-bold text-cyan-300 ring-1 ring-cyan-500/30">
+                    30 DAYS (FIXED)
+                  </span>
+                </div>
+
+                <div className="flex justify-between text-slate-400">
+                  <span>PRINCIPAL DRAWN (100%)</span>
+                  <span className="tabular-nums text-white">
+                    {formatUsdc(parsedStroops)} USDC
+                  </span>
+                </div>
+
+                <div className="flex justify-between text-slate-400">
+                  <span>
+                    ORIGINATION FEE ({formatBps(config.loanFeeBps)} · 80% LP / 20% BS)
+                  </span>
+                  <span className="tabular-nums text-amber-300">
+                    +{formatUsdc(originationFeeStroops)} USDC
+                  </span>
+                </div>
+
+                <div className="flex justify-between text-slate-400">
+                  <span>WATERFALL AUTO-REPAY</span>
+                  <span className="tabular-nums text-cyan-300">
+                    {formatBps(config.waterfallSplitBps)} on-time · 100% overdue
+                  </span>
+                </div>
+
+                <div className="flex justify-between text-slate-400">
+                  <span className="inline-flex items-center gap-1">
+                    <CalendarClock className="h-3.5 w-3.5 text-amber-400" />
+                    MATURITY DUE (IST)
+                  </span>
+                  <span className="tabular-nums text-amber-300">
+                    {formatUnixToIST(estimatedDueUnix)}
+                  </span>
+                </div>
+
+                <div className="flex justify-between border-t border-slate-800 pt-2 font-bold text-white">
+                  <span>TOTAL ON-TIME OBLIGATION</span>
+                  <span className="tabular-nums text-emerald-400">
+                    {formatUsdc(totalRepaymentObligation)} USDC
+                  </span>
+                </div>
               </div>
-              <div className="flex justify-between text-slate-400">
-                <span>WATERFALL SPLIT</span>
-                <span className="tabular-nums text-cyan-300">
-                  {formatBps(config.waterfallSplitBps)} on-time · 100% late
-                </span>
+
+              {/* Overdue Strike Escalation Schedule */}
+              <div className="space-y-1.5 rounded-xl border border-amber-500/30 bg-amber-950/25 p-3.5 text-xs text-amber-100/90">
+                <div className="flex items-center gap-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-amber-300">
+                  <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />
+                  <span>Overdue Strike Escalation (6-Strike Guard)</span>
+                </div>
+                <p className="text-[11px] leading-relaxed text-slate-300">
+                  If unpaid after 30 days, each elapsed 30-day overdue period adds{' '}
+                  <strong className="text-amber-300">+{formatBps(config.loanFeeBps)}</strong>{' '}
+                  ({parsedStroops > 0n ? `+${formatUsdc(perStrikePenaltyStroops)} USDC` : '2.5% of principal'})
+                  to your debt up to <strong>6 strikes</strong>
+                  {parsedStroops > 0n
+                    ? ` (max ${formatUsdc(maxSixStrikeDebtStroops)} USDC at Strike 6)`
+                    : ''}
+                  . At <strong>6/6 strikes</strong>, your wallet and SEP-12 ID are suspended until
+                  rehabilitated with a <strong>+50% cure penalty</strong>.
+                </p>
               </div>
-              <div className="flex justify-between text-slate-400">
-                <span className="inline-flex items-center gap-1">
-                  <CalendarClock className="h-3.5 w-3.5 text-amber-400" />
-                  DUE_AT (IST)
-                </span>
-                <span className="tabular-nums text-amber-300">
-                  {isDurationValid ? formatUnixToIST(estimatedDueUnix) : 'INVALID_TERM'}
-                </span>
-              </div>
-              <div className="flex justify-between border-t border-slate-800 pt-2 font-bold text-white">
-                <span>TOTAL OBLIGATION</span>
-                <span className="tabular-nums text-emerald-400">
-                  {formatUsdc(totalRepaymentObligation)} USDC
-                </span>
-              </div>
-            </div>
+            </>
           ) : (
             activeLoan &&
             liveLoan && (
@@ -458,12 +362,7 @@ export const BorrowModal: React.FC<BorrowModalProps> = ({
 
           <button
             type="submit"
-            disabled={
-              isSubmitting ||
-              txDone ||
-              !amountInput.trim() ||
-              (mode === 'borrow' && !isDurationValid)
-            }
+            disabled={isSubmitting || txDone || !amountInput.trim()}
             className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-400 via-emerald-400 to-cyan-400 px-4 py-3 font-mono text-xs font-bold uppercase tracking-wider text-slate-950 shadow-[0_0_24px_rgba(34,211,238,0.25)] transition hover:opacity-95 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:from-slate-800 disabled:via-slate-800 disabled:to-slate-800 disabled:text-slate-500 disabled:shadow-none"
           >
             {isSubmitting ? (
@@ -475,7 +374,7 @@ export const BorrowModal: React.FC<BorrowModalProps> = ({
               <>
                 <span>
                   {mode === 'borrow'
-                    ? '[ ⬡ Confirm & Draw USDC ]'
+                    ? '[ ⬡ Confirm 30-Day Credit Draw ]'
                     : parsedStroops >= liveDebt
                     ? '[ ✓ Confirm & Close Full Loan ]'
                     : '[ ↗ Confirm Direct Repayment ]'}

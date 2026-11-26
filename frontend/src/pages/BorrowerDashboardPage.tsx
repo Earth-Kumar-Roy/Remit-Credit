@@ -216,10 +216,17 @@ export const BorrowerDashboardPage: React.FC<BorrowerDashboardPageProps> = ({
             kycStatus={kycStatus}
             lpShares={lpShares}
             lpDeposit={lpDeposit}
-            onOpenBorrow={() => setModalState({ mode: 'borrow', prefillFullRepay: false })}
+            onOpenBorrow={() => {
+              if (kycStatus !== 'VERIFIED') {
+                setActivePage('kyc');
+                return;
+              }
+              setModalState({ mode: 'borrow', prefillFullRepay: false });
+            }}
             onOpenRepay={(payFull = false) =>
               setModalState({ mode: 'repay', prefillFullRepay: payFull })
             }
+            onRehabilitated={onRefreshAll}
           />
         </div>
       </div>

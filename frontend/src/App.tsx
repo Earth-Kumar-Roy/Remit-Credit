@@ -110,14 +110,15 @@ const AppContent: React.FC = () => {
 
       <main className="mx-auto w-full max-w-7xl flex-1 space-y-6 px-4 py-8 sm:px-6 lg:px-8">
         {(activePage === 'dashboard' || activePage === 'pool') && (
-          <>
-            <RoleSwitcher keeperOnline={keeperOnline} />
-            <KycBanner
-              kycStatus={kycStatus}
-              kycRecord={kycRecord}
-              onOpenQuickVerify={() => setIsQuickKycOpen(true)}
-            />
-          </>
+          <RoleSwitcher keeperOnline={keeperOnline} />
+        )}
+
+        {(activePage === 'remit' || activePage === 'dashboard' || activePage === 'pool') && (
+          <KycBanner
+            kycStatus={kycStatus}
+            kycRecord={kycRecord}
+            onOpenQuickVerify={() => setIsQuickKycOpen(true)}
+          />
         )}
 
         {activePage === 'landing' && (
@@ -133,6 +134,7 @@ const AppContent: React.FC = () => {
             poolStats={poolStats}
             config={config}
             usdcBalance={usdcBalance}
+            kycStatus={kycStatus}
             events={events}
             isEventsLoading={eventsLoading}
             keeperOnline={keeperOnline}
@@ -164,6 +166,7 @@ const AppContent: React.FC = () => {
             lpDeposit={lpDeposit}
             lpShares={lpShares}
             lpPosition={lpPosition}
+            kycStatus={kycStatus}
             events={events}
             isEventsLoading={eventsLoading}
             onRefreshAll={handleFullSync}

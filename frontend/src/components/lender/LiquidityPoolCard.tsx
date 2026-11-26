@@ -12,17 +12,20 @@ import {
   Lock,
   PieChart,
 } from 'lucide-react';
+import { useWallet } from '@/context/WalletContext';
 import {
   LpPositionBreakdown,
   PoolStatsData,
   ProtocolConfigData,
 } from '@/hooks/useBorrowerProfile';
+import { KycStanding } from '@/hooks/useKycStatus';
 import { useRemitContract } from '@/hooks/useRemitContract';
 import { formatBps, formatUsdc, parseUsdcToStroops } from '@/utils/stroops';
 
 interface LiquidityPoolCardProps {
   isConnected: boolean;
   hasActiveLoan?: boolean;
+  kycStatus?: KycStanding;
   poolStats: PoolStatsData;
   config: ProtocolConfigData;
   usdcBalance: bigint;
@@ -37,6 +40,7 @@ const MIN_LP_SUPPLY_STROOPS = 1_000_000_000n; // 100.00 USDC minimum LP supply
 export const LiquidityPoolCard: React.FC<LiquidityPoolCardProps> = ({
   isConnected,
   hasActiveLoan = false,
+  kycStatus = 'UNVERIFIED',
   poolStats,
   config,
   usdcBalance,
@@ -45,6 +49,7 @@ export const LiquidityPoolCard: React.FC<LiquidityPoolCardProps> = ({
   lpPosition,
   onSuccess,
 }) => {
+  const { setActivePage } = useWallet();
   const { depositLiquidity, withdrawLiquidity } = useRemitContract();
   const [tab, setTab] = useState<'deposit' | 'withdraw'>(
     hasActiveLoan ? 'withdraw' : 'deposit'
@@ -54,6 +59,8 @@ export const LiquidityPoolCard: React.FC<LiquidityPoolCardProps> = ({
   const [statusMsg, setStatusMsg] = useState<{ type: 'error' | 'success'; text: string } | null>(
     null
   );
+
+  const isKycVerified = isConnected && kycStatus === 'VERIFIED';
 
   useEffect(() => {
     if (hasActiveLoan && tab === 'deposit') {
@@ -128,7 +135,11 @@ export const LiquidityPoolCard: React.FC<LiquidityPoolCardProps> = ({
     parsedInputStroops < MIN_LP_SUPPLY_STROOPS;
 
   const isDepositBalanceBelowMin =
-    isConnected && tab === 'deposit' && !hasActiveLoan && usdcBalance < MIN_LP_SUPPLY_STROOPS;
+    isConnected &&
+    isKycVerified &&
+    tab === 'deposit' &&
+    !hasActiveLoan &&
+    usdcBalance < MIN_LP_SUPPLY_STROOPS;
 
   const handleFillMax = () => {
     const whole = maxActionStroops / 10_000_000n;
@@ -142,6 +153,18 @@ export const LiquidityPoolCard: React.FC<LiquidityPoolCardProps> = ({
     setStatusMsg(null);
 
     try {
+      if (!isConnected) {
+        throw new Error('Connect your Freighter wallet first.');
+      }
+
+      if (!isKycVerified) {
+        throw new Error(
+          kycStatus === 'BANNED'
+            ? 'Wallet is suspended due to hitting 6 overdue loan strikes.'
+            : 'Complete SEP-12 KYC verification before supplying or withdrawing LP liquidity.'
+        );
+      }
+
       if (tab === 'deposit' && hasActiveLoan) {
         throw new Error('Repay your active loan before supplying liquidity to the LP vault.');
       }
@@ -422,8 +445,32 @@ export const LiquidityPoolCard: React.FC<LiquidityPoolCardProps> = ({
           </div>
         </div>
 
+        {/* SEP-12 KYC Required Notice */}
+        {isConnected && !isKycVerified && (
+          <div className="relative z-10 mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/40 bg-amber-950/50 p-3.5 text-xs text-amber-200">
+            <div className="flex items-center gap-2">
+              <Lock className="h-4 w-4 shrink-0 text-amber-400" />
+              <span>
+                {kycStatus === 'BANNED'
+                  ? 'Account Suspended (6 Overdue Strikes): LP deposits and withdrawals are disabled.'
+                  : 'SEP-12 KYC Required: Complete identity verification before supplying or withdrawing USDC in the LP Vault.'}
+              </span>
+            </div>
+            {kycStatus !== 'BANNED' && (
+              <button
+                type="button"
+                onClick={() => setActivePage('kyc')}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-amber-400 px-3.5 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-slate-950 transition hover:bg-amber-300"
+              >
+                <ShieldCheck className="h-3.5 w-3.5" />
+                <span>Verify KYC Now</span>
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Ongoing Loan Warning Banner */}
-        {isConnected && hasActiveLoan && (
+        {isConnected && isKycVerified && hasActiveLoan && (
           <div className="relative z-10 mt-5 flex items-start gap-2.5 rounded-xl border border-amber-500/40 bg-amber-950/50 p-3.5 text-xs text-amber-200">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
             <span>
@@ -439,7 +486,7 @@ export const LiquidityPoolCard: React.FC<LiquidityPoolCardProps> = ({
           <div className="flex gap-2 font-mono">
             <button
               type="button"
-              disabled={hasActiveLoan}
+              disabled={!isKycVerified || hasActiveLoan}
               onClick={() => {
                 setTab('deposit');
                 setStatusMsg(null);
@@ -456,11 +503,12 @@ export const LiquidityPoolCard: React.FC<LiquidityPoolCardProps> = ({
 
             <button
               type="button"
+              disabled={!isKycVerified}
               onClick={() => {
                 setTab('withdraw');
                 setStatusMsg(null);
               }}
-              className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold uppercase tracking-wider transition ${
+              className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold uppercase tracking-wider transition disabled:cursor-not-allowed disabled:opacity-45 ${
                 tab === 'withdraw'
                   ? 'bg-gradient-to-r from-emerald-400 to-cyan-400 text-slate-950 shadow-md'
                   : 'border border-slate-800 bg-slate-950 text-slate-400 hover:text-white'
@@ -482,7 +530,7 @@ export const LiquidityPoolCard: React.FC<LiquidityPoolCardProps> = ({
                 <button
                   type="button"
                   onClick={handleFillMax}
-                  disabled={!isConnected || (tab === 'deposit' && hasActiveLoan)}
+                  disabled={!isKycVerified || (tab === 'deposit' && hasActiveLoan)}
                   className="tabular-nums font-bold text-cyan-400 hover:text-cyan-300 disabled:opacity-50"
                 >
                   MAX: {formatUsdc(maxActionStroops)} USDC
@@ -499,7 +547,7 @@ export const LiquidityPoolCard: React.FC<LiquidityPoolCardProps> = ({
                     setAmountInput(e.target.value);
                     setStatusMsg(null);
                   }}
-                  disabled={!isConnected || isSubmitting || (tab === 'deposit' && hasActiveLoan)}
+                  disabled={!isKycVerified || isSubmitting || (tab === 'deposit' && hasActiveLoan)}
                   className="tabular-nums w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 pr-16 font-mono text-base font-bold text-white placeholder-slate-600 focus:border-amber-400 focus:outline-none disabled:opacity-50"
                 />
                 <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center font-mono text-xs font-bold text-cyan-400">
@@ -548,6 +596,7 @@ export const LiquidityPoolCard: React.FC<LiquidityPoolCardProps> = ({
               type="submit"
               disabled={
                 !isConnected ||
+                !isKycVerified ||
                 isSubmitting ||
                 !amountInput.trim() ||
                 isDepositBelowMin ||
@@ -559,6 +608,10 @@ export const LiquidityPoolCard: React.FC<LiquidityPoolCardProps> = ({
               <span>
                 {!isConnected
                   ? 'Connect Freighter Wallet'
+                  : !isKycVerified
+                  ? kycStatus === 'BANNED'
+                    ? 'Account Suspended (6 Strikes)'
+                    : 'Complete SEP-12 KYC First'
                   : tab === 'deposit'
                   ? hasActiveLoan
                     ? 'Settle Active Loan Before Depositing'
