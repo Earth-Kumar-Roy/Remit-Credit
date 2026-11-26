@@ -1,4 +1,11 @@
-const DEFAULT_KEEPER_API_URL = import.meta.env.PROD ? '/api' : 'http://localhost:8000';
+const RAW_KEEPER_URL = (
+  import.meta.env.VITE_KEEPER_API_URL || (import.meta.env.PROD ? '/api' : 'http://localhost:8000')
+).replace(/\/+$/, '');
+
+const RESOLVED_KEEPER_API_URL =
+  RAW_KEEPER_URL.startsWith('/') && typeof window !== 'undefined'
+    ? `${window.location.origin}${RAW_KEEPER_URL}`
+    : RAW_KEEPER_URL;
 
 export const STELLAR_CONFIG = {
   network: import.meta.env.VITE_STELLAR_NETWORK || 'testnet',
@@ -15,7 +22,7 @@ export const STELLAR_CONFIG = {
   anchorPublicKey:
     import.meta.env.VITE_ANCHOR_PUBLIC_KEY ||
     'GCF4H37C6PDJITN3WCIELT7J625PERUUWZJXYJKYZ6AZ3P3DY3XDR3E6',
-  keeperApiUrl: (import.meta.env.VITE_KEEPER_API_URL || DEFAULT_KEEPER_API_URL).replace(/\/+$/, ''),
+  keeperApiUrl: RESOLVED_KEEPER_API_URL,
   explorerBaseUrl: 'https://stellar.expert/explorer/testnet',
   enableTestnetSimulator:
     (import.meta.env.VITE_ENABLE_TESTNET_SIMULATOR ?? 'true').toLowerCase() === 'true',
