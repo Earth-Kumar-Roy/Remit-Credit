@@ -13,6 +13,7 @@ import {
   UserCheck,
   Activity,
   Home,
+  Send,
 } from 'lucide-react';
 import { STELLAR_CONFIG, getExplorerContractUrl } from '@/config/stellar';
 import { AppPage, useWallet } from '@/context/WalletContext';
@@ -28,6 +29,7 @@ interface NavbarProps {
 
 const NAV_ITEMS: { id: AppPage; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'landing', label: 'Overview', icon: Home },
+  { id: 'remit', label: 'Send Remittance', icon: Send },
   { id: 'dashboard', label: 'Credit Vault', icon: LayoutDashboard },
   { id: 'pool', label: 'Liquidity Pool', icon: Landmark },
   { id: 'history', label: 'History', icon: History },
@@ -52,24 +54,28 @@ export const Navbar: React.FC<NavbarProps> = ({
   } = useWallet();
 
   return (
-    <header className="sticky top-0 z-40 border-b border-slate-800/80 bg-slate-950/85 backdrop-blur-xl">
-      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
-        {/* Brand & Contract Link */}
-        <div className="flex items-center gap-3">
+    <header className="sticky top-0 z-40 border-b border-slate-800/80 bg-[#080e1a]/95 backdrop-blur-xl">
+      <div className="mx-auto flex max-w-[1400px] flex-wrap items-center justify-between gap-2.5 px-4 py-2.5 sm:px-6 xl:flex-nowrap">
+        {/* Brand Logo & Contract Link */}
+        <div className="flex shrink-0 items-center gap-2.5">
           <button
             type="button"
             onClick={() => setActivePage('landing')}
-            className="flex items-center gap-3 text-left transition hover:opacity-90"
+            className="flex items-center gap-2.5 text-left transition hover:opacity-90"
           >
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400/20 to-cyan-500/20 ring-1 ring-emerald-400/40 shadow-lg shadow-emerald-500/10">
-              <ShieldCheck className="h-5 w-5 text-emerald-400" />
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-cyan-400/35 bg-slate-900/90 p-1 shadow-lg shadow-cyan-500/10">
+              <img
+                src="/Logo.png"
+                alt="RemitCredit Logo"
+                className="h-full w-full object-contain"
+              />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="bg-gradient-to-r from-white via-slate-100 to-emerald-200 bg-clip-text text-lg font-bold tracking-tight text-transparent">
+            <div className="whitespace-nowrap">
+              <div className="flex items-center gap-1.5">
+                <span className="bg-gradient-to-r from-white via-slate-100 to-cyan-200 bg-clip-text text-base font-bold tracking-tight text-transparent">
                   RemitCredit
                 </span>
-                <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-300 ring-1 ring-amber-500/30">
+                <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider text-amber-300 ring-1 ring-amber-500/30">
                   {STELLAR_CONFIG.network}
                 </span>
               </div>
@@ -78,16 +84,16 @@ export const Navbar: React.FC<NavbarProps> = ({
                 target="_blank"
                 rel="noreferrer"
                 onClick={(e) => e.stopPropagation()}
-                className="text-[11px] text-slate-400 transition hover:text-emerald-400"
+                className="block font-mono text-[10px] text-slate-400 transition hover:text-cyan-300"
               >
-                Contract: {shortenAddress(STELLAR_CONFIG.remitContractId, 6, 5)} ↗
+                {shortenAddress(STELLAR_CONFIG.remitContractId, 5, 4)} ↗
               </a>
             </div>
           </button>
         </div>
 
-        {/* Multi-Page Navigation Pills */}
-        <nav className="order-3 flex w-full items-center gap-1 overflow-x-auto rounded-xl border border-slate-800/90 bg-slate-900/80 p-1 lg:order-2 lg:w-auto">
+        {/* Multi-Page Navigation Pills (Single Line on Desktop) */}
+        <nav className="order-3 flex w-full items-center gap-0.5 overflow-x-auto rounded-xl border border-slate-800/90 bg-slate-900/85 p-1 xl:order-2 xl:w-auto xl:shrink-0">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             const isActive = activePage === item.id;
@@ -96,17 +102,17 @@ export const Navbar: React.FC<NavbarProps> = ({
                 key={item.id}
                 type="button"
                 onClick={() => setActivePage(item.id)}
-                className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
                   isActive
-                    ? 'bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/40 shadow-sm'
+                    ? 'bg-gradient-to-r from-amber-400/20 to-cyan-500/20 text-amber-300 ring-1 ring-amber-400/45 shadow-sm'
                     : 'text-slate-400 hover:bg-slate-800/70 hover:text-slate-200'
                 }`}
               >
-                <Icon className="h-3.5 w-3.5" />
+                <Icon className="h-3.5 w-3.5 shrink-0" />
                 <span>{item.label}</span>
                 {item.id === 'kyc' && address && kycStatus !== 'VERIFIED' && (
                   <span
-                    className={`h-1.5 w-1.5 rounded-full ${
+                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${
                       kycStatus === 'BANNED' ? 'bg-rose-500' : 'bg-amber-400'
                     }`}
                   />
@@ -116,28 +122,28 @@ export const Navbar: React.FC<NavbarProps> = ({
           })}
         </nav>
 
-        {/* Wallet, KYC Badge & Balance Controls */}
-        <div className="order-2 flex items-center gap-2.5 lg:order-3">
+        {/* Wallet, KYC Badge & Balance Controls (Single Line) */}
+        <div className="order-2 flex shrink-0 items-center gap-2 whitespace-nowrap xl:order-3">
           <button
             type="button"
             onClick={onRefresh}
             disabled={isRefreshing}
             title="Sync on-chain state"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-800 bg-slate-900 text-slate-300 transition hover:border-slate-700 hover:text-white disabled:opacity-50"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-800 bg-slate-900 text-slate-300 transition hover:border-slate-700 hover:text-white disabled:opacity-50"
           >
             <RefreshCw
-              className={`h-4 w-4 ${isRefreshing ? 'animate-spin text-emerald-400' : ''}`}
+              className={`h-3.5 w-3.5 ${isRefreshing ? 'animate-spin text-cyan-400' : ''}`}
             />
           </button>
 
           {address ? (
-            <div className="flex items-center gap-2">
+            <div className="flex shrink-0 items-center gap-1.5">
               {/* KYC Status Pill */}
               <button
                 type="button"
                 onClick={() => setActivePage('kyc')}
                 title="View SEP-12 KYC verification status"
-                className={`hidden items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold ring-1 transition md:inline-flex ${
+                className={`hidden shrink-0 items-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-semibold ring-1 transition md:inline-flex ${
                   kycStatus === 'VERIFIED'
                     ? 'bg-emerald-500/10 text-emerald-300 ring-emerald-500/30 hover:bg-emerald-500/20'
                     : kycStatus === 'BANNED'
@@ -147,41 +153,39 @@ export const Navbar: React.FC<NavbarProps> = ({
               >
                 {kycStatus === 'VERIFIED' ? (
                   <>
-                    <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
+                    <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
                     <span>KYC Verified</span>
                   </>
                 ) : kycStatus === 'BANNED' ? (
                   <>
-                    <Ban className="h-3.5 w-3.5 text-rose-400" />
+                    <Ban className="h-3.5 w-3.5 shrink-0 text-rose-400" />
                     <span>Banned</span>
                   </>
                 ) : (
                   <>
-                    <ShieldAlert className="h-3.5 w-3.5 text-amber-400" />
+                    <ShieldAlert className="h-3.5 w-3.5 shrink-0 text-amber-400" />
                     <span>Verify KYC</span>
                   </>
                 )}
               </button>
 
-              {/* Wallet USDC Balance */}
-              <div className="hidden rounded-lg border border-slate-800 bg-slate-900/90 px-3 py-1 text-right sm:block">
-                <div className="text-[10px] font-medium uppercase tracking-wider text-slate-400">
-                  Wallet USDC
-                </div>
-                <div className="tabular-nums text-xs font-semibold text-emerald-400">
+              {/* Compact Single-Line Wallet USDC Balance */}
+              <div className="hidden shrink-0 items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-900/90 px-2.5 py-1.5 font-mono text-[11px] sm:inline-flex">
+                <span className="text-slate-400">BAL:</span>
+                <span className="tabular-nums font-bold text-emerald-400">
                   {formatUsdc(usdcBalance)} USDC
-                </div>
+                </span>
               </div>
 
               {/* Connected Address Chip */}
-              <div className="flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-200">
-                <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                <span className="font-mono text-xs">{shortenAddress(address, 5, 5)}</span>
+              <div className="flex shrink-0 items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-medium text-emerald-200">
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" />
+                <span className="font-mono text-[11px]">{shortenAddress(address, 4, 4)}</span>
                 <button
                   type="button"
                   onClick={disconnect}
                   title="Disconnect wallet"
-                  className="ml-1 rounded p-0.5 text-emerald-300/70 transition hover:bg-emerald-500/20 hover:text-white"
+                  className="rounded p-0.5 text-emerald-300/70 transition hover:bg-emerald-500/20 hover:text-white"
                 >
                   <LogOut className="h-3.5 w-3.5" />
                 </button>
@@ -192,10 +196,10 @@ export const Navbar: React.FC<NavbarProps> = ({
               type="button"
               onClick={connect}
               disabled={isConnecting}
-              className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 shadow-lg shadow-emerald-500/20 transition hover:from-emerald-400 hover:to-cyan-400 disabled:opacity-60"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-gradient-to-r from-amber-400 via-emerald-400 to-cyan-400 px-3.5 py-2 font-mono text-xs font-bold uppercase tracking-wider text-slate-950 shadow-lg shadow-cyan-500/20 transition hover:opacity-95 disabled:opacity-60"
             >
-              <Wallet className="h-4 w-4" />
-              {isConnecting ? 'Connecting...' : 'Connect Freighter'}
+              <Wallet className="h-3.5 w-3.5 shrink-0" />
+              <span>{isConnecting ? 'Connecting...' : 'Connect Freighter'}</span>
             </button>
           )}
         </div>

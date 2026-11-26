@@ -1,5 +1,5 @@
 import React from 'react';
-import { ExternalLink, ShieldCheck } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
 import { STELLAR_CONFIG, getExplorerContractUrl } from '@/config/stellar';
 import { AppPage, useWallet } from '@/context/WalletContext';
 import { shortenAddress } from '@/utils/stroops';
@@ -10,6 +10,7 @@ interface FooterProps {
 
 const FOOTER_LINKS: { id: AppPage; label: string }[] = [
   { id: 'landing', label: 'Overview' },
+  { id: 'remit', label: 'Send Remittance' },
   { id: 'dashboard', label: 'Credit Vault' },
   { id: 'pool', label: 'Liquidity Pool' },
   { id: 'history', label: 'Account History' },
@@ -21,13 +22,17 @@ export const Footer: React.FC<FooterProps> = ({ keeperOnline }) => {
   const { setActivePage } = useWallet();
 
   return (
-    <footer className="mt-auto border-t border-slate-800/80 bg-slate-950/90">
+    <footer className="mt-auto border-t border-slate-800/80 bg-[#080e1a]/95">
       <div className="mx-auto flex max-w-7xl flex-col justify-between gap-6 px-4 py-8 sm:px-6 lg:flex-row lg:items-center lg:px-8">
         <div className="space-y-1.5">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4 text-emerald-400" />
+          <div className="flex items-center gap-2.5">
+            <img
+              src="/Logo.png"
+              alt="RemitCredit Logo"
+              className="h-6 w-6 rounded-md object-contain"
+            />
             <span className="text-sm font-bold text-white">RemitCredit Protocol</span>
-            <span className="rounded-full border border-slate-800 bg-slate-900 px-2 py-0.5 text-[10px] font-medium text-slate-400">
+            <span className="rounded-full border border-slate-800 bg-slate-900 px-2 py-0.5 font-mono text-[10px] font-medium text-cyan-300">
               Soroban v3 · SEP-12 / SEP-31
             </span>
           </div>
@@ -43,7 +48,7 @@ export const Footer: React.FC<FooterProps> = ({ keeperOnline }) => {
               key={link.id}
               type="button"
               onClick={() => setActivePage(link.id)}
-              className="transition hover:text-emerald-400"
+              className="transition hover:text-cyan-300"
             >
               {link.label}
             </button>
@@ -56,13 +61,13 @@ export const Footer: React.FC<FooterProps> = ({ keeperOnline }) => {
             href={getExplorerContractUrl(STELLAR_CONFIG.remitContractId)}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1 font-mono text-slate-400 transition hover:text-emerald-400"
+            className="inline-flex items-center gap-1 font-mono text-slate-400 transition hover:text-cyan-300"
           >
             {shortenAddress(STELLAR_CONFIG.remitContractId, 6, 5)}
             <ExternalLink className="h-3 w-3" />
           </a>
 
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-800 bg-slate-900 px-2.5 py-1 text-[11px] text-slate-300">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-800 bg-slate-900 px-2.5 py-1 font-mono text-[11px] text-slate-300">
             <span
               className={`h-2 w-2 rounded-full ${
                 keeperOnline ? 'bg-emerald-400' : 'bg-rose-400'

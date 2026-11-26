@@ -68,20 +68,23 @@ export const KycRegistrationModal: React.FC<KycRegistrationModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 p-4 backdrop-blur-md">
-      <div className="w-full max-w-lg rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-2xl">
-        <div className="flex items-start justify-between border-b border-slate-800 pb-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 p-4 backdrop-blur-md">
+      <div className="relative w-full max-w-lg overflow-hidden rounded-2xl border border-slate-800 bg-[#080e1a] p-6 shadow-[0_0_50px_rgba(0,0,0,0.9)]">
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-emerald-400/60 to-transparent" />
+        <span className="pointer-events-none absolute left-4 top-2 select-none font-mono text-[9px] text-cyan-400/70">
+          ⌜ SEP-12_ATTESTATION // NULLIFIER_BIND ⌝
+        </span>
+
+        <div className="mt-2 flex items-start justify-between border-b border-slate-800 pb-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/15 ring-1 ring-emerald-500/35">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-500/35 bg-emerald-500/15">
               <Fingerprint className="h-5 w-5 text-emerald-400" />
             </div>
             <div>
-              <h3 className="text-base font-semibold text-white">
-                Quick SEP-12 KYC Verification
-              </h3>
-              <p className="text-xs text-slate-400">
-                1 human = 1 wallet · Salted SHA-256 nullifier bound to{' '}
-                <span className="font-mono text-emerald-300">{shortenAddress(address, 5, 4)}</span>
+              <h3 className="text-base font-bold text-white">Quick SEP-12 KYC Verification</h3>
+              <p className="font-mono text-xs text-slate-400">
+                1 human = 1 wallet · Bound to{' '}
+                <span className="text-emerald-300">{shortenAddress(address, 5, 4)}</span>
               </p>
             </div>
           </div>
@@ -90,16 +93,16 @@ export const KycRegistrationModal: React.FC<KycRegistrationModalProps> = ({
             type="button"
             onClick={onClose}
             disabled={isSubmitting}
-            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-800 hover:text-white"
+            className="rounded-lg border border-slate-800 bg-slate-900 p-1.5 text-slate-400 transition hover:border-slate-700 hover:text-white"
           >
-            <X className="h-5 w-5" />
+            <X className="h-4 w-4" />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="mt-4 space-y-3.5">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-300">
+              <label className="mb-1 block font-mono text-[11px] uppercase text-slate-300">
                 Full Legal Name
               </label>
               <input
@@ -109,12 +112,14 @@ export const KycRegistrationModal: React.FC<KycRegistrationModalProps> = ({
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 disabled={isSubmitting || done}
-                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-sm text-white placeholder-slate-600 focus:border-emerald-500 focus:outline-none"
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-sm text-white placeholder-slate-600 focus:border-cyan-400 focus:outline-none"
               />
             </div>
 
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-300">Email</label>
+              <label className="mb-1 block font-mono text-[11px] uppercase text-slate-300">
+                Email
+              </label>
               <input
                 type="email"
                 required
@@ -122,17 +127,19 @@ export const KycRegistrationModal: React.FC<KycRegistrationModalProps> = ({
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 disabled={isSubmitting || done}
-                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-sm text-white placeholder-slate-600 focus:border-emerald-500 focus:outline-none"
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-sm text-white placeholder-slate-600 focus:border-cyan-400 focus:outline-none"
               />
             </div>
 
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-300">Country</label>
+              <label className="mb-1 block font-mono text-[11px] uppercase text-slate-300">
+                Country
+              </label>
               <select
                 value={countryCode}
                 onChange={(e) => setCountryCode(e.target.value)}
                 disabled={isSubmitting || done}
-                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-sm text-white focus:border-emerald-500 focus:outline-none"
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-sm text-white focus:border-cyan-400 focus:outline-none"
               >
                 <option value="IN">IN · India</option>
                 <option value="PH">PH · Philippines</option>
@@ -144,12 +151,14 @@ export const KycRegistrationModal: React.FC<KycRegistrationModalProps> = ({
             </div>
 
             <div>
-              <label className="mb-1 block text-xs font-medium text-slate-300">ID Type</label>
+              <label className="mb-1 block font-mono text-[11px] uppercase text-slate-300">
+                ID Type
+              </label>
               <select
                 value={idType}
                 onChange={(e) => setIdType(e.target.value)}
                 disabled={isSubmitting || done}
-                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-sm text-white focus:border-emerald-500 focus:outline-none"
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-sm text-white focus:border-cyan-400 focus:outline-none"
               >
                 <option value="AADHAAR">National ID / Aadhaar</option>
                 <option value="PASSPORT">International Passport</option>
@@ -160,7 +169,7 @@ export const KycRegistrationModal: React.FC<KycRegistrationModalProps> = ({
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-300">
+            <label className="mb-1 block font-mono text-[11px] uppercase text-slate-300">
               Government ID Number
             </label>
             <input
@@ -170,15 +179,13 @@ export const KycRegistrationModal: React.FC<KycRegistrationModalProps> = ({
               value={idNumber}
               onChange={(e) => setIdNumber(e.target.value)}
               disabled={isSubmitting || done}
-              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 font-mono text-sm text-white placeholder-slate-600 focus:border-emerald-500 focus:outline-none"
+              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 font-mono text-sm text-white placeholder-slate-600 focus:border-amber-400 focus:outline-none"
             />
           </div>
 
-          <div className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-950/75 px-3 py-2 text-[11px] text-slate-400">
+          <div className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-950/85 px-3 py-2 font-mono text-[11px] text-slate-400">
             <Lock className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
-            <span>
-              Zero-PII guarantee: only a 32-byte salted SHA-256 digest is stored on Soroban.
-            </span>
+            <span>Zero-PII guarantee: only a 32-byte salted SHA-256 digest is stored on Soroban.</span>
           </div>
 
           {errorMsg && (
@@ -189,7 +196,7 @@ export const KycRegistrationModal: React.FC<KycRegistrationModalProps> = ({
           )}
 
           {done && (
-            <div className="flex items-center gap-2 rounded-xl border border-emerald-500/35 bg-emerald-950/60 p-3 text-xs text-emerald-200">
+            <div className="flex items-center gap-2 rounded-xl border border-emerald-500/35 bg-emerald-950/60 p-3 font-mono text-xs text-emerald-200">
               <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
               <span>SEP-12 Identity Bound On-Chain!</span>
             </div>
@@ -198,17 +205,17 @@ export const KycRegistrationModal: React.FC<KycRegistrationModalProps> = ({
           <button
             type="submit"
             disabled={isSubmitting || done}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:from-emerald-400 hover:to-cyan-400 disabled:opacity-60"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-400 via-emerald-400 to-cyan-400 px-4 py-3 font-mono text-xs font-bold uppercase tracking-wider text-slate-950 shadow-lg transition hover:opacity-95 disabled:opacity-60"
           >
             {isSubmitting ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Binding Identity On-Chain...
+                <span>Binding Identity On-Chain...</span>
               </>
             ) : (
               <>
                 <UserCheck className="h-4 w-4" />
-                Verify &amp; Bind Wallet
+                <span>[ ✓ Verify &amp; Bind Wallet ]</span>
               </>
             )}
           </button>

@@ -206,26 +206,46 @@ export const VaultCard: React.FC<VaultCardProps> = ({
       ? liveLoan.liveLatePeriods > 0
         ? {
             isOverdue: true,
-            label: `OVERDUE · Strike ${liveLoan.liveLatePeriods}/6`,
+            label: `OVERDUE · STRIKE ${liveLoan.liveLatePeriods}/6`,
           }
         : formatDueCountdown(activeLoan.dueAt)
       : null;
 
   return (
-    <div className="relative flex flex-col justify-between overflow-hidden rounded-2xl border border-slate-800/90 bg-gradient-to-b from-slate-900/90 to-slate-950/90 p-6 shadow-xl">
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-emerald-400/40 to-transparent" />
+    <div className="relative flex flex-col justify-between overflow-hidden rounded-2xl border border-slate-800/90 bg-[#080e1a] p-6 shadow-xl">
+      {/* Subtle CAD Grid Overlay */}
+      <div className="pointer-events-none absolute inset-0 opacity-15">
+        <svg className="h-full w-full" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <pattern id="vaultCardCadGrid" width="32" height="32" patternUnits="userSpaceOnUse">
+              <path d="M 32 0 L 0 0 0 32" fill="none" stroke="#1e293b" strokeWidth="0.8" />
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#vaultCardCadGrid)" />
+        </svg>
+      </div>
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-amber-400/50 to-transparent" />
+      <span className="pointer-events-none absolute left-3 top-2 select-none font-mono text-[9px] text-slate-500">
+        ⌜ VAULT_EXECUTION_CORE ⌝
+      </span>
+      <span className="pointer-events-none absolute right-3 top-2 select-none font-mono text-[9px] text-amber-400/70">
+        [+]
+      </span>
 
-      <div>
-        <div className="flex items-start justify-between gap-4">
+      <div className="relative z-10 mt-2">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-base font-semibold text-white">
+            <div className="font-mono text-[10px] uppercase tracking-widest text-amber-400">
+              ◈ ZERO-COLLATERAL CREDIT FACILITY
+            </div>
+            <div className="mt-0.5 flex items-center gap-2">
+              <h2 className="text-base font-bold text-white">
                 Undercollateralized Credit Vault
               </h2>
               {isKycOk && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-300 ring-1 ring-emerald-500/30">
+                <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 px-2 py-0.5 font-mono text-[10px] font-bold text-emerald-300 ring-1 ring-emerald-500/35">
                   <ShieldCheck className="h-3 w-3" />
-                  SEP-12 Bound
+                  SEP-12 BOUND
                 </span>
               )}
             </div>
@@ -234,37 +254,37 @@ export const VaultCard: React.FC<VaultCardProps> = ({
             </p>
           </div>
 
-          <div className="flex items-center gap-1.5 rounded-lg border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-xs font-medium text-sky-300">
+          <div className="flex items-center gap-1.5 rounded-lg border border-cyan-500/35 bg-cyan-500/10 px-2.5 py-1.5 font-mono text-[11px] font-bold text-cyan-300">
             <SplitSquareVertical className="h-3.5 w-3.5" />
-            {formatBps(config.waterfallSplitBps)} Loan Split
+            {formatBps(config.waterfallSplitBps)} SPLIT
           </div>
         </div>
 
-        {/* Primary Credit Limit / Active Debt Display */}
-        <div className="mt-6 rounded-xl border border-slate-800 bg-slate-950/85 p-4">
+        {/* Primary Credit Limit / Active Debt Tectonic Block */}
+        <div className="mt-5 rounded-xl border border-slate-800/90 bg-slate-950/90 p-4">
           {activeLoan && liveLoan ? (
             <div className="space-y-3.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-xs font-semibold uppercase tracking-wider text-amber-400">
-                  Active Loan · Remaining Balance
+                <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-amber-400">
+                  ● ACTIVE LOAN · REMAINING DEBT
                 </span>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 font-mono">
                   <span
-                    className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold ring-1 ${
+                    className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold ring-1 ${
                       liveLoan.liveLatePeriods > 0
                         ? 'bg-rose-500/15 text-rose-300 ring-rose-500/40'
-                        : 'bg-slate-800 text-slate-300 ring-slate-700'
+                        : 'bg-slate-900 text-slate-300 ring-slate-700'
                     }`}
                   >
                     <AlertTriangle className="h-3 w-3" />
-                    Strikes: {liveLoan.liveLatePeriods}/6
+                    STRIKES: {liveLoan.liveLatePeriods}/6
                   </span>
                   {dueInfo && (
                     <span
-                      className={`inline-flex items-center gap-1 rounded-md px-2.5 py-0.5 text-[11px] font-semibold ring-1 ${
+                      className={`inline-flex items-center gap-1 rounded-md px-2.5 py-0.5 text-[10px] font-bold ring-1 ${
                         dueInfo.isOverdue || liveLoan.isDefaultedNow
                           ? 'bg-rose-500/15 text-rose-300 ring-rose-500/40'
-                          : 'bg-amber-500/10 text-amber-300 ring-amber-500/30'
+                          : 'bg-amber-500/15 text-amber-300 ring-amber-500/35'
                       }`}
                     >
                       <Clock className="h-3 w-3" />
@@ -275,53 +295,53 @@ export const VaultCard: React.FC<VaultCardProps> = ({
               </div>
 
               <div className="flex flex-wrap items-baseline gap-2.5">
-                <div className="tabular-nums text-3xl font-bold text-white">
+                <div className="tabular-nums font-mono text-3xl font-extrabold text-white">
                   {formatUsdc(liveLoan.liveRemainingDebt)}{' '}
-                  <span className="text-base font-medium text-slate-400">USDC</span>
+                  <span className="text-sm font-semibold text-cyan-400">USDC</span>
                 </div>
                 {liveLoan.pendingPenaltyFee > 0n && (
-                  <span className="rounded-md bg-rose-500/15 px-2 py-0.5 text-[11px] font-semibold text-rose-300 ring-1 ring-rose-500/30">
-                    +{formatUsdc(liveLoan.pendingPenaltyFee)} USDC accrued late fee
+                  <span className="rounded-md bg-rose-500/15 px-2 py-0.5 font-mono text-[10px] font-bold text-rose-300 ring-1 ring-rose-500/35">
+                    +{formatUsdc(liveLoan.pendingPenaltyFee)} USDC LATE FEE
                   </span>
                 )}
               </div>
 
-              {/* Explicit Due Date & Principal Breakdown Box */}
-              <div className="grid grid-cols-1 gap-2 rounded-lg border border-slate-800/90 bg-slate-900/70 p-3 text-xs sm:grid-cols-2">
+              {/* Explicit Due Date & Principal Breakdown Matrix */}
+              <div className="grid grid-cols-1 gap-2 rounded-lg border border-slate-800/90 bg-slate-900/75 p-3 font-mono text-xs sm:grid-cols-2">
                 <div>
-                  <div className="text-[11px] text-slate-400">
-                    Principal + Total Fees ({liveLoan.liveLatePeriods} late periods)
+                  <div className="text-[10px] uppercase text-slate-400">
+                    PRINCIPAL + FEES ({liveLoan.liveLatePeriods} STRIKES)
                   </div>
-                  <div className="tabular-nums mt-0.5 font-semibold text-slate-200">
+                  <div className="tabular-nums mt-0.5 font-bold text-slate-200">
                     {formatUsdc(activeLoan.principal)} +{' '}
                     {formatUsdc(liveLoan.liveTotalOwed - activeLoan.principal)} ={' '}
                     {formatUsdc(liveLoan.liveTotalOwed)} USDC
                   </div>
                 </div>
                 <div>
-                  <div className="flex items-center gap-1 text-[11px] text-amber-300">
+                  <div className="flex items-center gap-1 text-[10px] uppercase text-amber-300">
                     <CalendarClock className="h-3.5 w-3.5" />
                     {liveLoan.liveLatePeriods > 0
-                      ? 'Next Strike Window (IST)'
-                      : 'Period Due Deadline (IST)'}
+                      ? 'NEXT STRIKE WINDOW (IST)'
+                      : 'PERIOD DEADLINE (IST)'}
                   </div>
-                  <div className="tabular-nums mt-0.5 font-semibold text-white">
+                  <div className="tabular-nums mt-0.5 font-bold text-white">
                     {formatUnixToIST(liveLoan.effectiveDueAt)}
                   </div>
                 </div>
               </div>
 
               <div>
-                <div className="mb-1 flex justify-between text-xs text-slate-400">
-                  <span>Repaid via Waterfall / Direct</span>
-                  <span className="tabular-nums text-emerald-400">
+                <div className="mb-1 flex justify-between font-mono text-[11px] text-slate-400">
+                  <span>REPAID VIA WATERFALL / DIRECT</span>
+                  <span className="tabular-nums font-semibold text-emerald-400">
                     {formatUsdc(repaidAmount)} / {formatUsdc(liveLoan.liveTotalOwed)} USDC (
                     {repaymentPct}%)
                   </span>
                 </div>
-                <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800">
+                <div className="h-2 w-full overflow-hidden rounded-full bg-slate-900">
                   <div
-                    className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-400 transition-all duration-500"
+                    className="h-full rounded-full bg-gradient-to-r from-amber-400 via-emerald-400 to-cyan-400 transition-all duration-500"
                     style={{ width: `${Math.min(100, repaymentPct)}%` }}
                   />
                 </div>
@@ -329,40 +349,40 @@ export const VaultCard: React.FC<VaultCardProps> = ({
             </div>
           ) : (
             <div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium uppercase tracking-wider text-slate-400">
-                  Available Credit Limit
+              <div className="flex items-center justify-between font-mono text-[11px]">
+                <span className="uppercase tracking-wider text-slate-400">
+                  AVAILABLE CREDIT CEILING
                 </span>
-                <span className="text-xs text-slate-400">
-                  Fee: {formatBps(config.loanFeeBps)} · Term: 2m–30d
+                <span className="text-cyan-300">
+                  FEE: {formatBps(config.loanFeeBps)} · TERM: 2M–30D
                 </span>
               </div>
 
-              <div className="tabular-nums mt-1 text-3xl font-bold text-emerald-400">
+              <div className="tabular-nums mt-1.5 font-mono text-3xl font-extrabold text-emerald-400">
                 {formatUsdc(effectiveMaxBorrow)}{' '}
-                <span className="text-base font-medium text-slate-400">USDC</span>
+                <span className="text-sm font-semibold text-slate-400">USDC</span>
               </div>
 
-              <div className="mt-2.5 flex flex-wrap gap-1.5 text-[11px] text-slate-400">
-                <span className="rounded-md border border-slate-800 bg-slate-900/90 px-2 py-0.5">
+              <div className="mt-3 flex flex-wrap gap-1.5 font-mono text-[10px] text-slate-400">
+                <span className="rounded-md border border-slate-800 bg-slate-900 px-2 py-0.5">
                   T1: ${formatUsdc(config.tier1Cap, 0)}
                 </span>
-                <span className="rounded-md border border-slate-800 bg-slate-900/90 px-2 py-0.5">
+                <span className="rounded-md border border-slate-800 bg-slate-900 px-2 py-0.5">
                   T2: ${formatUsdc(config.tier2Cap, 0)}
                 </span>
-                <span className="rounded-md border border-slate-800 bg-slate-900/90 px-2 py-0.5">
+                <span className="rounded-md border border-slate-800 bg-slate-900 px-2 py-0.5">
                   T3: ${formatUsdc(config.tier3Cap, 0)}
                 </span>
-                <span className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-emerald-300">
-                  T4 Max: ${formatUsdc(config.tier4Cap, 0)}
+                <span className="rounded-md border border-amber-500/35 bg-amber-500/10 px-2 py-0.5 text-amber-300">
+                  T4 MAX: ${formatUsdc(config.tier4Cap, 0)}
                 </span>
-                <span className="rounded-md border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-sky-300">
-                  LP Available: ${formatUsdc(poolStats.availableLiquidity)}
+                <span className="rounded-md border border-cyan-500/35 bg-cyan-500/10 px-2 py-0.5 text-cyan-300">
+                  LP IDLE: ${formatUsdc(poolStats.availableLiquidity)}
                 </span>
               </div>
 
               {!hasPoolLiquidity && (
-                <div className="mt-3 flex items-start gap-2 rounded-lg border border-sky-500/30 bg-sky-950/40 p-2.5 text-[11px] text-sky-200">
+                <div className="mt-3 flex items-start gap-2 rounded-lg border border-sky-500/35 bg-sky-950/40 p-2.5 text-[11px] text-sky-200">
                   <Droplets className="mt-0.5 h-3.5 w-3.5 shrink-0 text-sky-400" />
                   <span>
                     <strong>LP Vault Liquidity is 0.00 USDC:</strong> Incoming remittances still
@@ -382,7 +402,7 @@ export const VaultCard: React.FC<VaultCardProps> = ({
 
               <p className="mt-2.5 text-xs text-slate-400">
                 When active, on-time incoming remittances deduct{' '}
-                <span className="font-semibold text-slate-200">
+                <span className="font-semibold text-amber-300">
                   {formatBps(config.waterfallSplitBps)}
                 </span>{' '}
                 of your total loan obligation, while overdue remittances automatically clear{' '}
@@ -394,18 +414,18 @@ export const VaultCard: React.FC<VaultCardProps> = ({
       </div>
 
       {/* Action Footer */}
-      <div className="mt-6">
+      <div className="relative z-10 mt-5">
         {!isConnected ? (
-          <div className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-950/60 px-4 py-3 text-xs text-slate-400">
+          <div className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-950/80 px-4 py-3 font-mono text-xs text-slate-400">
             <ShieldAlert className="h-4 w-4 shrink-0 text-amber-400" />
-            Connect your Freighter wallet to view credit eligibility and draw USDC.
+            <span>Connect your Freighter wallet to view credit eligibility and draw USDC.</span>
           </div>
         ) : isBanned ? (
           <div className="space-y-3 rounded-xl border border-rose-500/40 bg-rose-950/60 p-4 text-xs text-rose-200">
             <div className="flex items-start gap-2">
               <Ban className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" />
               <div>
-                <div className="font-semibold text-white">
+                <div className="font-bold text-white">
                   Account &amp; SEP-12 Identity Suspended (6 Overdue Strikes)
                 </div>
                 <p className="mt-1 text-rose-200/90">
@@ -414,8 +434,8 @@ export const VaultCard: React.FC<VaultCardProps> = ({
                   history will reset to Tier 0 (0 cycles).
                 </p>
                 {defaultedDebt > 0n && (
-                  <div className="tabular-nums mt-2 rounded-lg border border-rose-500/30 bg-slate-950/60 px-3 py-2 text-[11px]">
-                    Defaulted Debt: <strong>{formatUsdc(defaultedDebt)} USDC</strong> + 50% Penalty:{' '}
+                  <div className="tabular-nums mt-2 rounded-lg border border-rose-500/30 bg-slate-950/80 px-3 py-2 font-mono text-[11px]">
+                    DEBT: <strong>{formatUsdc(defaultedDebt)} USDC</strong> + 50% PENALTY:{' '}
                     <strong>{formatUsdc(rehabPenalty)} USDC</strong> ={' '}
                     <span className="font-bold text-white">
                       {formatUsdc(totalCurePayment)} USDC
@@ -435,19 +455,21 @@ export const VaultCard: React.FC<VaultCardProps> = ({
               type="button"
               onClick={handleLiftBan}
               disabled={isRehabbing}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-400 to-rose-400 px-4 py-2.5 text-xs font-bold text-slate-950 shadow-lg transition hover:from-amber-300 hover:to-rose-300 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-400 to-rose-400 px-4 py-2.5 font-mono text-xs font-bold uppercase tracking-wider text-slate-950 shadow-lg transition hover:from-amber-300 hover:to-rose-300 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isRehabbing ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Signing Rehabilitation Settlement...
+                  <span>Signing Rehabilitation Settlement...</span>
                 </>
               ) : (
                 <>
                   <CheckCircle2 className="h-4 w-4" />
-                  {totalCurePayment > 0n
-                    ? `Lift Ban & Reset Credit (${formatUsdc(totalCurePayment)} USDC)`
-                    : 'Lift Ban & Reset Credit'}
+                  <span>
+                    {totalCurePayment > 0n
+                      ? `Lift Ban & Reset Credit (${formatUsdc(totalCurePayment)} USDC)`
+                      : 'Lift Ban & Reset Credit'}
+                  </span>
                 </>
               )}
             </button>
@@ -457,24 +479,24 @@ export const VaultCard: React.FC<VaultCardProps> = ({
             <button
               type="button"
               onClick={() => onOpenRepay(true)}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-400 px-4 py-3 text-xs font-bold text-slate-950 shadow-lg shadow-emerald-500/20 transition hover:from-emerald-400 hover:to-cyan-300"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-400 to-cyan-400 px-4 py-3 font-mono text-xs font-bold uppercase tracking-wider text-slate-950 shadow-[0_0_20px_rgba(16,185,129,0.25)] transition hover:from-emerald-300 hover:to-cyan-300"
             >
               <CheckCircle2 className="h-4 w-4" />
-              Pay Full Loan at Once ({formatUsdc(liveLoan.liveRemainingDebt)} USDC)
+              <span>Pay Full ({formatUsdc(liveLoan.liveRemainingDebt)} USDC)</span>
             </button>
             <button
               type="button"
               onClick={() => onOpenRepay(false)}
-              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-sky-500/40 bg-sky-500/15 px-4 py-3 text-xs font-semibold text-sky-200 transition hover:bg-sky-500/25"
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-cyan-500/40 bg-cyan-500/15 px-4 py-3 font-mono text-xs font-bold uppercase tracking-wider text-cyan-200 transition hover:bg-cyan-500/25"
             >
-              Partial / Custom Payment
+              <span>Partial / Custom</span>
               <ArrowUpRight className="h-4 w-4" />
             </button>
           </div>
         ) : hasActiveLpPosition ? (
-          <div className="space-y-2.5 rounded-xl border border-sky-500/40 bg-sky-950/50 p-3.5 text-xs text-sky-200">
+          <div className="space-y-2.5 rounded-xl border border-cyan-500/40 bg-cyan-950/40 p-3.5 text-xs text-cyan-200">
             <div className="flex items-start gap-2">
-              <Droplets className="mt-0.5 h-4 w-4 shrink-0 text-sky-400" />
+              <Droplets className="mt-0.5 h-4 w-4 shrink-0 text-cyan-400" />
               <span>
                 You currently hold <strong>{formatUsdc(lpDeposit)} USDC</strong> in the LP Vault.
                 Borrowing is disabled while supplying liquidity — withdraw your LP funds instead.
@@ -483,57 +505,58 @@ export const VaultCard: React.FC<VaultCardProps> = ({
             <button
               type="button"
               onClick={() => setActivePage('pool')}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-sky-500 px-4 py-2.5 text-xs font-bold text-slate-950 transition hover:bg-sky-400"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-400 px-4 py-2.5 font-mono text-xs font-bold uppercase tracking-wider text-slate-950 transition hover:bg-cyan-300"
             >
               <Droplets className="h-4 w-4" />
-              Withdraw Your LP Liquidity ({formatUsdc(lpDeposit)} USDC)
+              <span>Withdraw Your LP Liquidity ({formatUsdc(lpDeposit)} USDC)</span>
             </button>
           </div>
         ) : !isKycOk ? (
           <button
             type="button"
             onClick={() => setActivePage('kyc')}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/15 px-4 py-3 text-sm font-semibold text-amber-200 transition hover:bg-amber-500/25"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-amber-500/45 bg-amber-500/15 px-4 py-3 font-mono text-xs font-bold uppercase tracking-wider text-amber-200 transition hover:bg-amber-500/25"
           >
             <ShieldAlert className="h-4 w-4 text-amber-400" />
-            Complete SEP-12 KYC to Unlock Borrowing
+            <span>[ ◈ Complete SEP-12 KYC to Unlock Borrowing ]</span>
           </button>
         ) : profile.needsCleanCycle ? (
           <div className="flex items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-950/50 px-4 py-3 text-xs text-amber-200">
             <Clock className="h-4 w-4 shrink-0 text-amber-400" />
             <span>
-              Previous loan was repaid late. Complete <strong>1 clean remittance cycle</strong>{' '}
-              above to unlock your next borrow.
+              Previous loan was repaid late. Complete <strong>1 clean remittance cycle</strong> to
+              unlock your next borrow.
             </span>
           </div>
         ) : cooldownRemaining > 0 ? (
-          <div className="flex items-center gap-2 rounded-xl border border-cyan-500/35 bg-cyan-950/40 px-4 py-3 text-xs text-cyan-200">
+          <div className="flex items-center gap-2 rounded-xl border border-cyan-500/35 bg-cyan-950/40 px-4 py-3 font-mono text-xs text-cyan-200">
             <Clock className="h-4 w-4 shrink-0 text-cyan-400" />
             <span>
-              Post-repayment cooldown active: next loan unlocks in{' '}
-              <strong>{cooldownRemaining}s</strong>.
+              POST-REPAYMENT COOLDOWN: UNLOCKS IN <strong>{cooldownRemaining}S</strong>
             </span>
           </div>
         ) : !hasPoolLiquidity ? (
           <button
             type="button"
             onClick={() => setActivePage('pool')}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-sky-500/40 bg-sky-500/15 px-4 py-3 text-sm font-semibold text-sky-200 transition hover:bg-sky-500/25"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-500/40 bg-cyan-500/15 px-4 py-3 font-mono text-xs font-bold uppercase tracking-wider text-cyan-200 transition hover:bg-cyan-500/25"
           >
-            <Droplets className="h-4 w-4 text-sky-400" />
-            LP Pool Empty (0 USDC) · Supply Liquidity First
+            <Droplets className="h-4 w-4 text-cyan-400" />
+            <span>[ ⊞ LP Pool Empty (0 USDC) · Supply Liquidity First ]</span>
           </button>
         ) : (
           <button
             type="button"
             onClick={onOpenBorrow}
             disabled={!isEligible}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 px-4 py-3 text-sm font-semibold text-slate-950 shadow-lg shadow-emerald-500/20 transition hover:from-emerald-400 hover:to-cyan-400 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:from-slate-800 disabled:to-slate-800 disabled:text-slate-500 disabled:shadow-none"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-400 via-emerald-400 to-cyan-400 px-4 py-3.5 font-mono text-xs font-bold uppercase tracking-wider text-slate-950 shadow-[0_0_24px_rgba(34,211,238,0.25)] transition hover:opacity-95 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:from-slate-800 disabled:via-slate-800 disabled:to-slate-800 disabled:text-slate-500 disabled:shadow-none"
           >
             <Sparkles className="h-4 w-4" />
-            {isEligible
-              ? `Draw Instant USDC Credit (Up to ${formatUsdc(effectiveMaxBorrow)} USDC)`
-              : `Complete ${config.minCyclesRequired} Remittance Cycles (${profile.remittanceCycles}/${config.minCyclesRequired})`}
+            <span>
+              {isEligible
+                ? `[ ⬡ Draw Instant USDC Credit (Up to ${formatUsdc(effectiveMaxBorrow)} USDC) ]`
+                : `Complete ${config.minCyclesRequired} Remittance Cycles (${profile.remittanceCycles}/${config.minCyclesRequired})`}
+            </span>
           </button>
         )}
       </div>

@@ -1,11 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import {
   AlertCircle,
+  ArrowRight,
   CheckCircle2,
   ExternalLink,
+  Globe2,
   Loader2,
+  Receipt,
   Send,
   ShieldCheck,
+  SplitSquareVertical,
 } from 'lucide-react';
 import {
   Address,
@@ -17,56 +21,72 @@ import {
 } from '@stellar/stellar-sdk';
 import { STELLAR_CONFIG, getExplorerTxUrl } from '@/config/stellar';
 import { useWallet } from '@/context/WalletContext';
-import { parseUsdcToStroops } from '@/utils/stroops';
+import { formatBps, formatUsdc, parseUsdcToStroops } from '@/utils/stroops';
 
 interface AnchorSimulatorProps {
   keeperOnline: boolean;
+  usdcBalance?: bigint;
+  remitFeeBps?: number;
+  remitFeeCap?: bigint;
+  waterfallSplitBps?: number;
   onSettled: () => Promise<void>;
 }
 
-const FEE_CAP_STROOPS = 150_000_000n; // 15.00 USDC max fee cap in v3 contract
+const DEFAULT_FEE_CAP_STROOPS = 150_000_000n; // 15.00 USDC max fee cap in v3 contract
 
 /**
  * Computes the exact gross stroops to pass into `send_remittance` so that after the contract
- * deducts `min(floor(gross * 200 / 10_000), 15_0000000)`, the recipient receives the full
+ * deducts `min(floor(gross * feeBps / 10_000), feeCap)`, the recipient receives the full
  * `targetNetStroops` entered by the sender.
  */
-function calculateGrossForExactNet(targetNetStroops: bigint): {
+function calculateGrossForExactNet(
+  targetNetStroops: bigint,
+  feeBps: bigint = 200n,
+  feeCapStroops: bigint = DEFAULT_FEE_CAP_STROOPS
+): {
   grossStroops: bigint;
   feeStroops: bigint;
   actualNetStroops: bigint;
+  isFeeCapped: boolean;
 } {
   if (targetNetStroops <= 0n) {
-    return { grossStroops: 0n, feeStroops: 0n, actualNetStroops: 0n };
+    return { grossStroops: 0n, feeStroops: 0n, actualNetStroops: 0n, isFeeCapped: false };
   }
 
-  // Case A: Fee hits the 15.00 USDC (150_000_000 stroops) cap
-  const cappedGross = targetNetStroops + FEE_CAP_STROOPS;
-  if ((cappedGross * 200n) / 10_000n >= FEE_CAP_STROOPS) {
+  // Case A: Fee hits the max fee cap (e.g., 15.00 USDC)
+  const cappedGross = targetNetStroops + feeCapStroops;
+  if ((cappedGross * feeBps) / 10_000n >= feeCapStroops) {
     return {
       grossStroops: cappedGross,
-      feeStroops: FEE_CAP_STROOPS,
+      feeStroops: feeCapStroops,
       actualNetStroops: targetNetStroops,
+      isFeeCapped: true,
     };
   }
 
-  // Case B: Uncapped 2% fee (gross = ceil(targetNet * 10_000 / 9_800))
-  let gross = (targetNetStroops * 10_000n + 9_799n) / 9_800n;
-  let fee = (gross * 200n) / 10_000n;
+  // Case B: Uncapped proportional fee (gross = ceil(targetNet * 10_000 / (10_000 - feeBps)))
+  const netRatio = 10_000n - feeBps;
+  let gross = (targetNetStroops * 10_000n + (netRatio - 1n)) / netRatio;
+  let fee = (gross * feeBps) / 10_000n;
   while (gross - fee < targetNetStroops) {
     gross += 1n;
-    fee = (gross * 200n) / 10_000n;
+    fee = (gross * feeBps) / 10_000n;
   }
 
   return {
     grossStroops: gross,
     feeStroops: fee,
     actualNetStroops: gross - fee,
+    isFeeCapped: false,
   };
 }
 
 export const AnchorSimulator: React.FC<AnchorSimulatorProps> = ({
   keeperOnline,
+  usdcBalance,
+  remitFeeBps = 200,
+  remitFeeCap = DEFAULT_FEE_CAP_STROOPS,
+  waterfallSplitBps = 4000,
   onSettled,
 }) => {
   const { address, signTx } = useWallet();
@@ -82,7 +102,6 @@ export const AnchorSimulator: React.FC<AnchorSimulatorProps> = ({
   } | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Clear recipient field if it matches the connected sender wallet
   useEffect(() => {
     if (address && beneficiary.trim().toUpperCase() === address.trim().toUpperCase()) {
       setBeneficiary('');
@@ -98,20 +117,33 @@ export const AnchorSimulator: React.FC<AnchorSimulatorProps> = ({
   const parsedNetAmount = Number(amountUsdc);
   const validPreview = Number.isFinite(parsedNetAmount) && parsedNetAmount > 0;
 
-  let previewGross = 0;
-  let previewFee = 0;
-  let previewNet = 0;
+  let quoteGrossStroops = 0n;
+  let quoteFeeStroops = 0n;
+  let quoteNetStroops = 0n;
+  let quoteCapped = false;
+
   if (validPreview) {
     try {
       const targetNetStroops = parseUsdcToStroops(amountUsdc);
-      const calc = calculateGrossForExactNet(targetNetStroops);
-      previewGross = Number(calc.grossStroops) / 10_000_000;
-      previewFee = Number(calc.feeStroops) / 10_000_000;
-      previewNet = Number(calc.actualNetStroops) / 10_000_000;
+      const calc = calculateGrossForExactNet(
+        targetNetStroops,
+        BigInt(remitFeeBps),
+        remitFeeCap > 0n ? remitFeeCap : DEFAULT_FEE_CAP_STROOPS
+      );
+      quoteGrossStroops = calc.grossStroops;
+      quoteFeeStroops = calc.feeStroops;
+      quoteNetStroops = calc.actualNetStroops;
+      quoteCapped = calc.isFeeCapped;
     } catch {
       // Ignore partial decimal typing
     }
   }
+
+  const insufficientBalance =
+    typeof usdcBalance === 'bigint' && quoteGrossStroops > 0n && quoteGrossStroops > usdcBalance;
+
+  const waterfallRepayPct = Math.round(waterfallSplitBps / 100);
+  const waterfallDirectPct = Math.max(0, 100 - waterfallRepayPct);
 
   const handleAtomicRemittance = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -138,11 +170,21 @@ export const AnchorSimulator: React.FC<AnchorSimulatorProps> = ({
       return;
     }
 
+    if (insufficientBalance) {
+      setErrorMsg(
+        `Insufficient wallet balance: quote requires ${formatUsdc(quoteGrossStroops)} USDC (you have ${formatUsdc(usdcBalance!)} USDC).`
+      );
+      return;
+    }
+
     setIsSending(true);
     try {
       const targetNetStroops = parseUsdcToStroops(amountUsdc);
-      const { grossStroops, feeStroops, actualNetStroops } =
-        calculateGrossForExactNet(targetNetStroops);
+      const { grossStroops, feeStroops, actualNetStroops } = calculateGrossForExactNet(
+        targetNetStroops,
+        BigInt(remitFeeBps),
+        remitFeeCap > 0n ? remitFeeCap : DEFAULT_FEE_CAP_STROOPS
+      );
 
       setStepLabel('Sign atomic remittance in Freighter...');
       const horizon = new Horizon.Server(STELLAR_CONFIG.horizonUrl);
@@ -228,147 +270,237 @@ export const AnchorSimulator: React.FC<AnchorSimulatorProps> = ({
   };
 
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-cyan-500/25 bg-gradient-to-br from-slate-900 via-slate-900 to-cyan-950/20 p-6 shadow-xl">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-base font-semibold text-white">
+    <div className="relative overflow-hidden rounded-3xl border border-slate-800/90 bg-[#080e1a] p-6 shadow-2xl sm:p-8">
+      {/* CAD Grid & Top Accent */}
+      <div className="pointer-events-none absolute inset-0 opacity-15">
+        <svg className="h-full w-full" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <pattern id="remitSimGrid" width="36" height="36" patternUnits="userSpaceOnUse">
+              <path d="M 36 0 L 0 0 0 36" fill="none" stroke="#1e293b" strokeWidth="0.8" />
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#remitSimGrid)" />
+        </svg>
+      </div>
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
+      <span className="pointer-events-none absolute left-4 top-3 select-none font-mono text-[10px] text-cyan-400/70">
+        ⌜ SEP-31_WIRE_ROUTER // EXACT_DELIVERY ⌝
+      </span>
+      <span className="pointer-events-none absolute right-4 top-3 select-none font-mono text-[10px] text-amber-400/70">
+        [+]
+      </span>
+
+      <div className="relative z-10 mt-2 space-y-6">
+        {/* Header + Amount Presets */}
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-800/80 pb-5">
+          <div>
+            <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-widest text-cyan-400">
+              <Globe2 className="h-3.5 w-3.5" />
+              <span>ATOMIC CROSS-BORDER SETTLEMENT</span>
+            </div>
+            <h2 className="mt-1 text-lg font-bold text-white">
               SEP-31 Cross-Border Remittance Corridor
             </h2>
-            <span className="rounded-md bg-cyan-500/15 px-2 py-0.5 text-[11px] font-medium text-cyan-300 ring-1 ring-cyan-500/30">
-              Exact Recipient Delivery · +2% Backstop Fee (Max $15)
-            </span>
+            <p className="mt-0.5 max-w-2xl text-xs text-slate-400">
+              Recipient receives 100% of your entered payout (or {waterfallRepayPct}%/{waterfallDirectPct}% waterfall split if a loan is active), while the {formatBps(remitFeeBps)} fee (capped at ${formatUsdc(remitFeeCap, 0)} USDC) funds the First-Loss Backstop Reserve.
+            </p>
           </div>
-          <p className="mt-0.5 text-xs text-slate-400">
-            Recipient receives 100% of the entered amount (or 40%/60% waterfall when a loan is
-            active), while the 2% fee (capped at 15.00 USDC) is added on top and routed to the
-            First-Loss Backstop Reserve.
-          </p>
+
+          <div className="flex flex-wrap items-center gap-1.5 font-mono">
+            {[100, 250, 500, 1000].map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                onClick={() => setAmountUsdc(String(preset))}
+                className={`rounded-lg border px-2.5 py-1 text-[11px] font-bold transition ${
+                  Number(amountUsdc) === preset
+                    ? 'border-amber-400 bg-amber-400/15 text-amber-300'
+                    : 'border-slate-800 bg-slate-950/80 text-cyan-200 hover:border-cyan-400/50'
+                }`}
+              >
+                ${preset}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="flex items-center gap-1.5">
-          {[100, 250, 500, 1000].map((preset) => (
+        {/* Form Controls (Recipient Address + Net Payout + Send Button) */}
+        <form onSubmit={handleAtomicRemittance} className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+          <div className="lg:col-span-7">
+            <label className="mb-1.5 block font-mono text-[10px] uppercase tracking-wider text-slate-400">
+              01 // Recipient Beneficiary Address (G...)
+            </label>
+            <input
+              type="text"
+              placeholder="Enter recipient 56-char Stellar address (G...)"
+              value={beneficiary}
+              onChange={(e) => {
+                setBeneficiary(e.target.value);
+                setErrorMsg(null);
+              }}
+              disabled={isSending}
+              className="w-full rounded-xl border border-slate-700/90 bg-slate-950 px-3.5 py-2.5 font-mono text-xs text-slate-100 placeholder-slate-600 focus:border-cyan-400 focus:outline-none"
+            />
+          </div>
+
+          <div className="lg:col-span-3">
+            <label className="mb-1.5 block font-mono text-[10px] uppercase tracking-wider text-slate-400">
+              02 // Net Payout (USDC)
+            </label>
+            <input
+              type="number"
+              step="any"
+              min="1"
+              value={amountUsdc}
+              onChange={(e) => setAmountUsdc(e.target.value)}
+              disabled={isSending}
+              className="tabular-nums w-full rounded-xl border border-slate-700/90 bg-slate-950 px-3.5 py-2.5 font-mono text-sm font-bold text-white focus:border-amber-400 focus:outline-none"
+            />
+          </div>
+
+          <div className="flex items-end lg:col-span-2">
             <button
-              key={preset}
-              type="button"
-              onClick={() => setAmountUsdc(String(preset))}
-              className="rounded-lg border border-cyan-500/25 bg-slate-950/70 px-2.5 py-1 text-[11px] font-medium text-cyan-200 transition hover:border-cyan-400 hover:bg-cyan-500/10"
+              type="submit"
+              disabled={!address || isSending || isSelfTransfer || insufficientBalance}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-400 via-emerald-400 to-cyan-400 px-4 py-2.5 font-mono text-xs font-bold uppercase tracking-wider text-slate-950 shadow-[0_0_24px_rgba(34,211,238,0.25)] transition hover:opacity-95 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:from-slate-800 disabled:via-slate-800 disabled:to-slate-800 disabled:text-slate-500 disabled:shadow-none"
             >
-              ${preset}
+              {isSending ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>{stepLabel || 'Sending...'}</span>
+                </>
+              ) : (
+                <>
+                  <Send className="h-4 w-4" />
+                  <span>Send Wire</span>
+                </>
+              )}
             </button>
-          ))}
-        </div>
+          </div>
+        </form>
+
+        {/* Live Cryptographic FX & Settlement Quotation Box */}
+        {validPreview && quoteGrossStroops > 0n && !isSelfTransfer && (
+          <div className="rounded-2xl border border-slate-800/90 bg-slate-950/90 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 pb-2.5 font-mono text-[10px]">
+              <span className="inline-flex items-center gap-1.5 font-bold uppercase tracking-wider text-amber-300">
+                <Receipt className="h-3.5 w-3.5 text-amber-400" />
+                LIVE SEP-31 SETTLEMENT QUOTATION
+              </span>
+              <span className="text-slate-400">
+                {quoteCapped
+                  ? `FEE CAP APPLIED ($${formatUsdc(remitFeeCap)} MAX)`
+                  : `STANDARD ${formatBps(remitFeeBps)} BACKSTOP FEE`}
+              </span>
+            </div>
+
+            <div className="mt-3 grid grid-cols-1 gap-3 font-mono text-xs sm:grid-cols-3">
+              <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-3">
+                <div className="text-[10px] uppercase text-slate-400">1. Recipient Net Delivery</div>
+                <div className="tabular-nums mt-1 text-base font-bold text-emerald-400">
+                  {formatUsdc(quoteNetStroops)} USDC
+                </div>
+                <div className="mt-0.5 text-[10px] text-slate-500">
+                  100% guaranteed delivery
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-3">
+                <div className="flex items-center gap-1 text-[10px] uppercase text-slate-400">
+                  <ShieldCheck className="h-3.5 w-3.5 text-cyan-400" />
+                  <span>2. Backstop Reserve Cut</span>
+                </div>
+                <div className="tabular-nums mt-1 text-base font-bold text-cyan-300">
+                  +{formatUsdc(quoteFeeStroops)} USDC
+                </div>
+                <div className="mt-0.5 text-[10px] text-slate-500">
+                  {formatBps(remitFeeBps)} (capped at ${formatUsdc(remitFeeCap, 0)})
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-amber-500/30 bg-slate-900/80 p-3">
+                <div className="text-[10px] uppercase text-amber-300">3. Total Sender Debit</div>
+                <div className="tabular-nums mt-1 text-base font-bold text-white">
+                  {formatUsdc(quoteGrossStroops)} USDC
+                </div>
+                <div className="mt-0.5 text-[10px] text-slate-400">
+                  {typeof usdcBalance === 'bigint'
+                    ? `Wallet: ${formatUsdc(usdcBalance)} USDC`
+                    : 'Single atomic Soroban tx'}
+                </div>
+              </div>
+            </div>
+
+            {/* Recipient Routing Scenario Preview */}
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-800/80 bg-slate-900/50 px-3.5 py-2 font-mono text-[11px] text-slate-300">
+              <span className="inline-flex items-center gap-1.5 text-cyan-300">
+                <SplitSquareVertical className="h-3.5 w-3.5" />
+                IF RECIPIENT HAS ACTIVE LOAN:
+              </span>
+              <span className="flex items-center gap-2">
+                <span>
+                  On-Time: <strong className="text-amber-300">{waterfallRepayPct}%</strong> loan /{' '}
+                  <strong className="text-emerald-300">{waterfallDirectPct}%</strong> direct
+                </span>
+                <ArrowRight className="h-3 w-3 text-slate-600" />
+                <span>
+                  Overdue: <strong className="text-rose-300">100%</strong> debt sweep
+                </span>
+              </span>
+            </div>
+          </div>
+        )}
+
+        {isSelfTransfer && (
+          <div className="flex items-center gap-2 rounded-xl border border-amber-500/35 bg-amber-950/60 px-3.5 py-2.5 text-xs text-amber-200">
+            <AlertCircle className="h-4 w-4 shrink-0 text-amber-400" />
+            <span>
+              You cannot send a remittance to your own connected wallet. Enter a different recipient
+              Stellar address.
+            </span>
+          </div>
+        )}
+
+        {insufficientBalance && (
+          <div className="flex items-center gap-2 rounded-xl border border-rose-500/35 bg-rose-950/60 px-3.5 py-2.5 text-xs text-rose-200">
+            <AlertCircle className="h-4 w-4 shrink-0 text-rose-400" />
+            <span>
+              Insufficient USDC balance for quoted debit of{' '}
+              <strong>{formatUsdc(quoteGrossStroops)} USDC</strong> (available:{' '}
+              <strong>{formatUsdc(usdcBalance!)} USDC</strong>).
+            </span>
+          </div>
+        )}
+
+        {errorMsg && (
+          <div className="flex items-center gap-2 rounded-xl border border-rose-500/35 bg-rose-950/60 px-3.5 py-2.5 text-xs text-rose-200">
+            <AlertCircle className="h-4 w-4 shrink-0 text-rose-400" />
+            <span>{errorMsg}</span>
+          </div>
+        )}
+
+        {receipt && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-500/35 bg-emerald-950/60 px-4 py-3 text-xs text-emerald-200">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
+              <span>
+                Delivered full <strong>{receipt.netDeliveredUsdc.toFixed(2)} USDC</strong> to
+                recipient ({receipt.totalDebitedUsdc.toFixed(2)} USDC total debited incl.{' '}
+                {receipt.feeUsdc.toFixed(2)} USDC Backstop fee).
+              </span>
+            </div>
+            <a
+              href={getExplorerTxUrl(receipt.txHash)}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 font-mono font-bold text-emerald-300 underline hover:text-white"
+            >
+              <span>View Atomic Tx</span>
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
+        )}
       </div>
-
-      <form onSubmit={handleAtomicRemittance} className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-12">
-        <div className="md:col-span-6">
-          <label className="mb-1 block text-[11px] font-medium text-slate-400">
-            Recipient Beneficiary Address (External Wallet / Family Member)
-          </label>
-          <input
-            type="text"
-            placeholder="Enter recipient Stellar address (G...)"
-            value={beneficiary}
-            onChange={(e) => {
-              setBeneficiary(e.target.value);
-              setErrorMsg(null);
-            }}
-            disabled={isSending}
-            className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 font-mono text-xs text-slate-200 placeholder-slate-600 focus:border-cyan-500 focus:outline-none"
-          />
-        </div>
-
-        <div className="md:col-span-3">
-          <label className="mb-1 block text-[11px] font-medium text-slate-400">
-            Recipient Receives (USDC)
-          </label>
-          <input
-            type="number"
-            step="any"
-            min="1"
-            value={amountUsdc}
-            onChange={(e) => setAmountUsdc(e.target.value)}
-            disabled={isSending}
-            className="tabular-nums w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-sm font-semibold text-white focus:border-cyan-500 focus:outline-none"
-          />
-        </div>
-
-        <div className="flex items-end md:col-span-3">
-          <button
-            type="submit"
-            disabled={!address || isSending || isSelfTransfer}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-emerald-400 px-4 py-2.5 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-500/20 transition hover:from-cyan-400 hover:to-emerald-300 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:from-slate-800 disabled:to-slate-800 disabled:text-slate-500 disabled:shadow-none"
-          >
-            {isSending ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                {stepLabel || 'Processing...'}
-              </>
-            ) : (
-              <>
-                <Send className="h-4 w-4" />
-                Send {validPreview ? `${previewNet.toFixed(0)} USDC` : 'Remittance'}
-              </>
-            )}
-          </button>
-        </div>
-      </form>
-
-      {isSelfTransfer && (
-        <div className="mt-3 flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-950/60 px-3.5 py-2 text-xs text-amber-200">
-          <AlertCircle className="h-4 w-4 shrink-0 text-amber-400" />
-          <span>
-            You cannot send a remittance to your own connected wallet. Enter a different recipient
-            Stellar address.
-          </span>
-        </div>
-      )}
-
-      {validPreview && previewGross > 0 && !isSelfTransfer && (
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-800 bg-slate-950/70 px-3.5 py-2 text-[11px] text-slate-300">
-          <span>
-            Recipient Gets: <strong className="text-white">{previewNet.toFixed(2)} USDC</strong>
-          </span>
-          <div className="flex items-center gap-1.5">
-            <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
-            <span>
-              + Backstop Fee (2%, max $15):{' '}
-              <strong className="text-emerald-300">{previewFee.toFixed(2)} USDC</strong>
-            </span>
-          </div>
-          <span>
-            Total Debited: <strong className="text-cyan-300">{previewGross.toFixed(2)} USDC</strong>
-          </span>
-        </div>
-      )}
-
-      {errorMsg && (
-        <div className="mt-3 flex items-center gap-2 rounded-xl border border-rose-500/30 bg-rose-950/60 px-3.5 py-2.5 text-xs text-rose-200">
-          <AlertCircle className="h-4 w-4 shrink-0 text-rose-400" />
-          <span>{errorMsg}</span>
-        </div>
-      )}
-
-      {receipt && (
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-500/30 bg-emerald-950/60 px-3.5 py-2.5 text-xs text-emerald-200">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
-            <span>
-              Delivered full {receipt.netDeliveredUsdc.toFixed(2)} USDC to recipient (
-              {receipt.totalDebitedUsdc.toFixed(2)} USDC total debited incl.{' '}
-              {receipt.feeUsdc.toFixed(2)} USDC Backstop fee).
-            </span>
-          </div>
-          <a
-            href={getExplorerTxUrl(receipt.txHash)}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1 font-semibold text-emerald-300 underline hover:text-white"
-          >
-            View Atomic Tx <ExternalLink className="h-3 w-3" />
-          </a>
-        </div>
-      )}
     </div>
   );
 };

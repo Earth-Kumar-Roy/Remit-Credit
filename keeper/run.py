@@ -10,7 +10,7 @@ if str(KEEPER_DIR) not in sys.path:
 
 import uvicorn
 from apscheduler.schedulers.background import BackgroundScheduler
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.routes import router
@@ -26,16 +26,28 @@ logging.basicConfig(
 logger = logging.getLogger("remit_keeper")
 
 scheduler = BackgroundScheduler()
+tick_router = APIRouter()
+
+
+def run_full_keeper_sweep() -> dict:
+    init_db()
+    poll_contract_events()
+    refresh_borrower_ttls()
+    return {"status": "ok", "sweep": "completed"}
+
+
+@tick_router.api_route("/tick", methods=["GET", "POST"])
+def trigger_keeper_tick():
+    return run_full_keeper_sweep()
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     settings = get_settings()
     logger.info("Connecting RemitCredit Keeper to Google Sheets DB (%s)", settings.GSHEETS_WEBAPP_URL)
-    init_db()
 
-    # Initial catch-up poll on boot
-    poll_contract_events()
+    # Full catch-up sweep on boot (events + overdue strikes/bans + TTLs)
+    run_full_keeper_sweep()
 
     scheduler.add_job(
         poll_contract_events,
@@ -69,7 +81,7 @@ def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
         title="RemitCredit Anchor & Keeper Daemon",
-        version="0.2.0",
+        version="0.3.0",
         lifespan=lifespan,
     )
     app.add_middleware(
@@ -80,6 +92,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(router)
+    app.include_router(tick_router)
     return app
 
 

@@ -1,3 +1,5 @@
+const DEFAULT_KEEPER_API_URL = import.meta.env.PROD ? '/api' : 'http://localhost:8000';
+
 export const STELLAR_CONFIG = {
   network: import.meta.env.VITE_STELLAR_NETWORK || 'testnet',
   rpcUrl: import.meta.env.VITE_SOROBAN_RPC_URL || 'https://soroban-testnet.stellar.org',
@@ -13,7 +15,7 @@ export const STELLAR_CONFIG = {
   anchorPublicKey:
     import.meta.env.VITE_ANCHOR_PUBLIC_KEY ||
     'GCF4H37C6PDJITN3WCIELT7J625PERUUWZJXYJKYZ6AZ3P3DY3XDR3E6',
-  keeperApiUrl: import.meta.env.VITE_KEEPER_API_URL || 'http://localhost:8000',
+  keeperApiUrl: (import.meta.env.VITE_KEEPER_API_URL || DEFAULT_KEEPER_API_URL).replace(/\/+$/, ''),
   explorerBaseUrl: 'https://stellar.expert/explorer/testnet',
   enableTestnetSimulator:
     (import.meta.env.VITE_ENABLE_TESTNET_SIMULATOR ?? 'true').toLowerCase() === 'true',

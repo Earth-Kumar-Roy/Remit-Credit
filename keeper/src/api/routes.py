@@ -16,6 +16,7 @@ from src.db import (
 )
 from src.jobs.anchor_router import route_incoming_remittance
 from src.jobs.event_indexer import poll_contract_events
+from src.jobs.ttl_keeper import enforce_overdue_defaults, refresh_borrower_ttls
 from src.stellar_client import StellarKeeperClient
 
 router = APIRouter()
@@ -107,28 +108,35 @@ def health_check():
 @router.post("/sync")
 def sync_onchain_events(payload: Optional[SyncRequest] = None):
     """
-    Stateless on-demand indexer trigger for Vercel Serverless mode:
-    indexes recent v3 Soroban events into Google Sheets and optionally checks overdue strikes.
+    Stateless on-demand keeper & indexer trigger:
+    1. Indexes recent Soroban v3 events into Google Sheets
+    2. Checks overdue strikes / 6-strike default bans (for a specific wallet or all borrowers)
+    3. Extends Persistent storage TTLs when running a global sweep
     """
     indexed = poll_contract_events()
     overdue_tx_hash = None
+    slashed_count = 0
 
     if payload and payload.wallet:
         wallet = payload.wallet.strip().upper()
         if StrKey.is_valid_ed25519_public_key(wallet):
             upsert_tracked_borrower(wallet)
             if payload.check_overdue:
-                try:
-                    client = StellarKeeperClient()
-                    res = client.slash_default(wallet)
-                    overdue_tx_hash = res["tx_hash"]
-                    indexed += poll_contract_events()
-                except Exception:
-                    pass
+                res = enforce_overdue_defaults(target_wallet=wallet)
+                slashed_count = res["slashed"]
+                if res["tx_hashes"]:
+                    overdue_tx_hash = res["tx_hashes"][0]
+    elif payload and payload.check_overdue:
+        res = enforce_overdue_defaults()
+        slashed_count = res["slashed"]
+        if res["tx_hashes"]:
+            overdue_tx_hash = res["tx_hashes"][0]
+        refresh_borrower_ttls()
 
     return {
         "status": "synced",
         "indexed_events": indexed,
+        "slashed_count": slashed_count,
         "overdue_tx_hash": overdue_tx_hash,
     }
 
@@ -184,11 +192,11 @@ def register_sep12_customer(payload: Sep12RegisterRequest):
             if status == "BANNED":
                 raise HTTPException(
                     status_code=403,
-                    detail="This government ID is permanently banned due to hitting 6 overdue loan strikes.",
+                    detail="This identity credential is suspended due to hitting 6 overdue loan strikes.",
                 )
             raise HTTPException(
                 status_code=409,
-                detail="This government ID is already bound to another Stellar wallet (1 human = 1 vault).",
+                detail="This identity credential is already bound to another Stellar wallet (1 human = 1 vault).",
             )
 
     if existing.get("exists"):
@@ -196,7 +204,7 @@ def register_sep12_customer(payload: Sep12RegisterRequest):
         if record.get("kyc_status") == "BANNED":
             raise HTTPException(
                 status_code=403,
-                detail="Wallet is permanently banned due to hitting 6 overdue loan strikes.",
+                detail="Wallet is suspended due to hitting 6 overdue loan strikes.",
             )
         return {
             "status": "ALREADY_VERIFIED",

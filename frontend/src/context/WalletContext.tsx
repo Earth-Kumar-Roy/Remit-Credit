@@ -10,7 +10,7 @@ import {
 import { STELLAR_CONFIG } from '@/config/stellar';
 
 export type ActiveRole = 'borrower' | 'lp';
-export type AppPage = 'landing' | 'dashboard' | 'pool' | 'history' | 'kyc' | 'status';
+export type AppPage = 'landing' | 'remit' | 'dashboard' | 'pool' | 'history' | 'kyc' | 'status';
 
 interface WalletContextValue {
   address: string | null;
