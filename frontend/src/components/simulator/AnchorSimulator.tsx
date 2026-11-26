@@ -10,6 +10,7 @@ import {
   Send,
   ShieldCheck,
   SplitSquareVertical,
+  Wallet,
 } from 'lucide-react';
 import {
   Address,
@@ -33,6 +34,7 @@ interface AnchorSimulatorProps {
 }
 
 const DEFAULT_FEE_CAP_STROOPS = 150_000_000n; // 15.00 USDC max fee cap in v3 contract
+const MIN_REMITTANCE_USDC = 100;
 
 /**
  * Computes the exact gross stroops to pass into `send_remittance` so that after the contract
@@ -89,7 +91,7 @@ export const AnchorSimulator: React.FC<AnchorSimulatorProps> = ({
   waterfallSplitBps = 4000,
   onSettled,
 }) => {
-  const { address, signTx } = useWallet();
+  const { address, isConnecting, connect, signTx } = useWallet();
   const [beneficiary, setBeneficiary] = useState<string>('');
   const [amountUsdc, setAmountUsdc] = useState<string>('100');
   const [stepLabel, setStepLabel] = useState<string>('');
@@ -115,7 +117,10 @@ export const AnchorSimulator: React.FC<AnchorSimulatorProps> = ({
     cleanBeneficiary === address!.trim().toUpperCase();
 
   const parsedNetAmount = Number(amountUsdc);
-  const validPreview = Number.isFinite(parsedNetAmount) && parsedNetAmount > 0;
+  const isBelowMinimum =
+    amountUsdc.trim().length > 0 &&
+    (!Number.isFinite(parsedNetAmount) || parsedNetAmount < MIN_REMITTANCE_USDC);
+  const validPreview = Number.isFinite(parsedNetAmount) && parsedNetAmount >= MIN_REMITTANCE_USDC;
 
   let quoteGrossStroops = 0n;
   let quoteFeeStroops = 0n;
@@ -139,8 +144,12 @@ export const AnchorSimulator: React.FC<AnchorSimulatorProps> = ({
     }
   }
 
+  // Only check wallet balance when a wallet is actually connected
   const insufficientBalance =
-    typeof usdcBalance === 'bigint' && quoteGrossStroops > 0n && quoteGrossStroops > usdcBalance;
+    Boolean(address) &&
+    typeof usdcBalance === 'bigint' &&
+    quoteGrossStroops > 0n &&
+    quoteGrossStroops > usdcBalance;
 
   const waterfallRepayPct = Math.round(waterfallSplitBps / 100);
   const waterfallDirectPct = Math.max(0, 100 - waterfallRepayPct);
@@ -165,8 +174,8 @@ export const AnchorSimulator: React.FC<AnchorSimulatorProps> = ({
       return;
     }
 
-    if (!Number.isFinite(parsedNetAmount) || parsedNetAmount <= 0) {
-      setErrorMsg('Enter a valid USDC amount greater than 0.');
+    if (!Number.isFinite(parsedNetAmount) || parsedNetAmount < MIN_REMITTANCE_USDC) {
+      setErrorMsg(`Minimum remittance amount is ${MIN_REMITTANCE_USDC.toFixed(2)} USDC.`);
       return;
     }
 
@@ -284,7 +293,7 @@ export const AnchorSimulator: React.FC<AnchorSimulatorProps> = ({
       </div>
       <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
       <span className="pointer-events-none absolute left-4 top-3 select-none font-mono text-[10px] text-cyan-400/70">
-        ⌜ SEP-31_WIRE_ROUTER // EXACT_DELIVERY ⌝
+        ⌜ SEP-31_WIRE_ROUTER // EXACT_DELIVERY · MIN $100 ⌝
       </span>
       <span className="pointer-events-none absolute right-4 top-3 select-none font-mono text-[10px] text-amber-400/70">
         [+]
@@ -302,7 +311,10 @@ export const AnchorSimulator: React.FC<AnchorSimulatorProps> = ({
               SEP-31 Cross-Border Remittance Corridor
             </h2>
             <p className="mt-0.5 max-w-2xl text-xs text-slate-400">
-              Recipient receives 100% of your entered payout (or {waterfallRepayPct}%/{waterfallDirectPct}% waterfall split if a loan is active), while the {formatBps(remitFeeBps)} fee (capped at ${formatUsdc(remitFeeCap, 0)} USDC) funds the First-Loss Backstop Reserve.
+              Minimum transfer: <strong className="text-amber-300">100.00 USDC</strong>. Recipient
+              receives 100% of your entered payout (or {waterfallRepayPct}%/{waterfallDirectPct}%
+              waterfall split if a loan is active), while the {formatBps(remitFeeBps)} fee (capped
+              at ${formatUsdc(remitFeeCap, 0)} USDC) funds the First-Loss Backstop Reserve.
             </p>
           </div>
 
@@ -311,7 +323,10 @@ export const AnchorSimulator: React.FC<AnchorSimulatorProps> = ({
               <button
                 key={preset}
                 type="button"
-                onClick={() => setAmountUsdc(String(preset))}
+                onClick={() => {
+                  setAmountUsdc(String(preset));
+                  setErrorMsg(null);
+                }}
                 className={`rounded-lg border px-2.5 py-1 text-[11px] font-bold transition ${
                   Number(amountUsdc) === preset
                     ? 'border-amber-400 bg-amber-400/15 text-amber-300'
@@ -345,14 +360,17 @@ export const AnchorSimulator: React.FC<AnchorSimulatorProps> = ({
 
           <div className="lg:col-span-3">
             <label className="mb-1.5 block font-mono text-[10px] uppercase tracking-wider text-slate-400">
-              02 // Net Payout (USDC)
+              02 // Net Payout (Min 100 USDC)
             </label>
             <input
               type="number"
               step="any"
-              min="1"
+              min={MIN_REMITTANCE_USDC}
               value={amountUsdc}
-              onChange={(e) => setAmountUsdc(e.target.value)}
+              onChange={(e) => {
+                setAmountUsdc(e.target.value);
+                setErrorMsg(null);
+              }}
               disabled={isSending}
               className="tabular-nums w-full rounded-xl border border-slate-700/90 bg-slate-950 px-3.5 py-2.5 font-mono text-sm font-bold text-white focus:border-amber-400 focus:outline-none"
             />
@@ -361,7 +379,14 @@ export const AnchorSimulator: React.FC<AnchorSimulatorProps> = ({
           <div className="flex items-end lg:col-span-2">
             <button
               type="submit"
-              disabled={!address || isSending || isSelfTransfer || insufficientBalance}
+              disabled={
+                !address ||
+                isSending ||
+                isSelfTransfer ||
+                isBelowMinimum ||
+                !validPreview ||
+                insufficientBalance
+              }
               className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-400 via-emerald-400 to-cyan-400 px-4 py-2.5 font-mono text-xs font-bold uppercase tracking-wider text-slate-950 shadow-[0_0_24px_rgba(34,211,238,0.25)] transition hover:opacity-95 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:from-slate-800 disabled:via-slate-800 disabled:to-slate-800 disabled:text-slate-500 disabled:shadow-none"
             >
               {isSending ? (
@@ -424,9 +449,9 @@ export const AnchorSimulator: React.FC<AnchorSimulatorProps> = ({
                   {formatUsdc(quoteGrossStroops)} USDC
                 </div>
                 <div className="mt-0.5 text-[10px] text-slate-400">
-                  {typeof usdcBalance === 'bigint'
+                  {address && typeof usdcBalance === 'bigint'
                     ? `Wallet: ${formatUsdc(usdcBalance)} USDC`
-                    : 'Single atomic Soroban tx'}
+                    : 'Connect Freighter to check balance'}
                 </div>
               </div>
             </div>
@@ -448,6 +473,36 @@ export const AnchorSimulator: React.FC<AnchorSimulatorProps> = ({
                 </span>
               </span>
             </div>
+          </div>
+        )}
+
+        {!address && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-cyan-500/35 bg-cyan-950/40 px-4 py-3 text-xs text-cyan-200">
+            <div className="flex items-center gap-2">
+              <Wallet className="h-4 w-4 shrink-0 text-cyan-400" />
+              <span>
+                Connect your Freighter wallet to verify your USDC balance and dispatch an atomic
+                cross-border remittance.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={connect}
+              disabled={isConnecting}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-400 px-3.5 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider text-slate-950 transition hover:bg-cyan-300 disabled:opacity-60"
+            >
+              <Wallet className="h-3.5 w-3.5" />
+              <span>{isConnecting ? 'Connecting...' : 'Connect Freighter'}</span>
+            </button>
+          </div>
+        )}
+
+        {isBelowMinimum && (
+          <div className="flex items-center gap-2 rounded-xl border border-amber-500/35 bg-amber-950/60 px-3.5 py-2.5 text-xs text-amber-200">
+            <AlertCircle className="h-4 w-4 shrink-0 text-amber-400" />
+            <span>
+              Minimum cross-border remittance amount is <strong>100.00 USDC</strong>.
+            </span>
           </div>
         )}
 

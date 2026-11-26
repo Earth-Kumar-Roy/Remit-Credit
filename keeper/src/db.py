@@ -206,10 +206,62 @@ def fetch_recent_events(
     category: Optional[str] = None,
     limit: int = 50,
 ) -> List[Dict[str, Any]]:
-    params: Dict[str, Any] = {"action": "get_history", "limit": limit}
-    if beneficiary:
-        params["wallet"] = beneficiary.strip().upper()
-    if category:
-        params["category"] = category.strip().upper()
-    res = _gas_get(params)
-    return res.get("transactions", [])
+    normalized_cat = category.strip().upper() if category and category.strip().upper() != "ALL" else None
+
+    if not beneficiary:
+        params: Dict[str, Any] = {"action": "get_history", "limit": limit}
+        if normalized_cat:
+            params["category"] = normalized_cat
+        res = _gas_get(params)
+        return res.get("transactions", [])
+
+    wallet = beneficiary.strip().upper()
+
+    # 1. Direct wallet-owned records from Google Sheets
+    wallet_params: Dict[str, Any] = {"action": "get_history", "wallet": wallet, "limit": limit}
+    if normalized_cat:
+        wallet_params["category"] = normalized_cat
+    direct_res = _gas_get(wallet_params)
+    merged: List[Dict[str, Any]] = list(direct_res.get("transactions", []))
+    seen_ids = {str(tx.get("event_id", "")) for tx in merged}
+
+    # 2. Backfill historical outgoing remittances where `wallet` was stored in `counterparty`
+    if normalized_cat in (None, "REMITTANCE_OUT"):
+        try:
+            remit_res = _gas_get(
+                {"action": "get_history", "category": "REMITTANCE_IN", "limit": max(limit, 100)}
+            )
+            for tx in remit_res.get("transactions", []):
+                sender = str(tx.get("counterparty", "")).strip().upper()
+                recipient = str(tx.get("wallet_address", "")).strip().upper()
+                if sender == wallet and recipient != wallet:
+                    out_id = f"{tx.get('event_id', '')}-out"
+                    if out_id in seen_ids:
+                        continue
+                    seen_ids.add(out_id)
+                    gross = float(tx.get("gross_amount_usdc") or 0.0)
+                    fee = float(tx.get("fee_or_yield_usdc") or tx.get("pool_allocated_usdc") or 0.0)
+                    merged.append(
+                        {
+                            "event_id": out_id,
+                            "tx_hash": tx.get("tx_hash", ""),
+                            "ledger": tx.get("ledger", 0),
+                            "timestamp_ist": tx.get("timestamp_ist", ""),
+                            "wallet_address": wallet,
+                            "counterparty": recipient,
+                            "tx_category": "REMITTANCE_OUT",
+                            "event_type": tx.get("event_type", "RemittanceLogged"),
+                            "gross_amount_usdc": gross,
+                            "pool_allocated_usdc": fee,
+                            "user_net_usdc": round(-gross, 4),
+                            "fee_or_yield_usdc": fee,
+                            "remaining_debt_usdc": 0.0,
+                            "credit_tier": 0,
+                            "status": "SENT",
+                        }
+                    )
+        except Exception as exc:
+            logger.debug("Could not backfill outgoing remittances for %s: %s", wallet, exc)
+
+    merged.sort(key=lambda item: (int(item.get("ledger") or 0), str(item.get("event_id") or "")), reverse=True)
+    return merged[:limit]

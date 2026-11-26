@@ -32,6 +32,8 @@ interface LiquidityPoolCardProps {
   onSuccess: () => Promise<void>;
 }
 
+const MIN_LP_SUPPLY_STROOPS = 1_000_000_000n; // 100.00 USDC minimum LP supply
+
 export const LiquidityPoolCard: React.FC<LiquidityPoolCardProps> = ({
   isConnected,
   hasActiveLoan = false,
@@ -109,6 +111,25 @@ export const LiquidityPoolCard: React.FC<LiquidityPoolCardProps> = ({
   const maxActionStroops =
     tab === 'deposit' ? (hasActiveLoan ? 0n : usdcBalance) : withdrawableNow;
 
+  // Check if typed deposit amount is below the 100 USDC minimum
+  let parsedInputStroops: bigint | null = null;
+  if (amountInput.trim()) {
+    try {
+      parsedInputStroops = parseUsdcToStroops(amountInput);
+    } catch {
+      parsedInputStroops = null;
+    }
+  }
+
+  const isDepositBelowMin =
+    tab === 'deposit' &&
+    amountInput.trim().length > 0 &&
+    parsedInputStroops !== null &&
+    parsedInputStroops < MIN_LP_SUPPLY_STROOPS;
+
+  const isDepositBalanceBelowMin =
+    isConnected && tab === 'deposit' && !hasActiveLoan && usdcBalance < MIN_LP_SUPPLY_STROOPS;
+
   const handleFillMax = () => {
     const whole = maxActionStroops / 10_000_000n;
     const frac = (maxActionStroops % 10_000_000n).toString().padStart(7, '0').replace(/0+$/, '');
@@ -126,6 +147,10 @@ export const LiquidityPoolCard: React.FC<LiquidityPoolCardProps> = ({
       }
 
       const stroops = parseUsdcToStroops(amountInput);
+      if (tab === 'deposit' && stroops < MIN_LP_SUPPLY_STROOPS) {
+        throw new Error('Minimum liquidity supply amount is 100.00 USDC.');
+      }
+
       if (stroops > maxActionStroops) {
         throw new Error(
           tab === 'deposit'
@@ -451,7 +476,7 @@ export const LiquidityPoolCard: React.FC<LiquidityPoolCardProps> = ({
               <div className="mb-1.5 flex items-center justify-between font-mono text-xs">
                 <span className="text-slate-400">
                   {tab === 'deposit'
-                    ? 'SUPPLY AMOUNT'
+                    ? 'SUPPLY AMOUNT (MIN 100 USDC)'
                     : `WITHDRAW AMOUNT (${withdrawablePctOfPos}% IDLE CASH)`}
                 </span>
                 <button
@@ -468,9 +493,12 @@ export const LiquidityPoolCard: React.FC<LiquidityPoolCardProps> = ({
                 <input
                   type="text"
                   inputMode="decimal"
-                  placeholder="1000.00"
+                  placeholder={tab === 'deposit' ? '100.00' : '50.00'}
                   value={amountInput}
-                  onChange={(e) => setAmountInput(e.target.value)}
+                  onChange={(e) => {
+                    setAmountInput(e.target.value);
+                    setStatusMsg(null);
+                  }}
                   disabled={!isConnected || isSubmitting || (tab === 'deposit' && hasActiveLoan)}
                   className="tabular-nums w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 pr-16 font-mono text-base font-bold text-white placeholder-slate-600 focus:border-amber-400 focus:outline-none disabled:opacity-50"
                 />
@@ -479,6 +507,25 @@ export const LiquidityPoolCard: React.FC<LiquidityPoolCardProps> = ({
                 </span>
               </div>
             </div>
+
+            {isDepositBelowMin && (
+              <div className="flex items-center gap-2 rounded-xl border border-amber-500/35 bg-amber-950/60 p-3 text-xs text-amber-200">
+                <AlertCircle className="h-4 w-4 shrink-0 text-amber-400" />
+                <span>
+                  Minimum liquidity supply deposit is <strong>100.00 USDC</strong>.
+                </span>
+              </div>
+            )}
+
+            {isDepositBalanceBelowMin && !isDepositBelowMin && (
+              <div className="flex items-center gap-2 rounded-xl border border-amber-500/35 bg-amber-950/60 p-3 text-xs text-amber-200">
+                <AlertCircle className="h-4 w-4 shrink-0 text-amber-400" />
+                <span>
+                  Minimum LP supply is <strong>100.00 USDC</strong> (your current wallet balance is{' '}
+                  <strong>{formatUsdc(usdcBalance)} USDC</strong>).
+                </span>
+              </div>
+            )}
 
             {statusMsg && (
               <div
@@ -503,6 +550,7 @@ export const LiquidityPoolCard: React.FC<LiquidityPoolCardProps> = ({
                 !isConnected ||
                 isSubmitting ||
                 !amountInput.trim() ||
+                isDepositBelowMin ||
                 (tab === 'deposit' && hasActiveLoan)
               }
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-400 via-emerald-400 to-cyan-400 px-6 py-3 font-mono text-xs font-bold uppercase tracking-wider text-slate-950 shadow-lg transition hover:opacity-95 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:from-slate-800 disabled:via-slate-800 disabled:to-slate-800 disabled:text-slate-500 disabled:shadow-none"

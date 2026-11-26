@@ -1,9 +1,9 @@
 import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
-from stellar_sdk import scval, xdr
+from stellar_sdk import StrKey, scval, xdr
 
 from src.db import (
     get_kv,
@@ -61,7 +61,7 @@ def _normalize_native(obj: Any) -> Any:
     return str(obj)
 
 
-def _map_event_to_sheet_row(
+def _map_event_to_sheet_rows(
     event_id: str,
     tx_hash: str,
     ledger: int,
@@ -69,84 +69,118 @@ def _map_event_to_sheet_row(
     event_type: str,
     topics: List[Any],
     data: Any,
-) -> Optional[Dict[str, Any]]:
-    """Normalizes a decoded v3 Soroban contract event into the 15-column Transactions tab schema."""
+) -> List[Dict[str, Any]]:
+    """Normalizes a decoded v3 Soroban contract event into 1 or more 15-column Transactions rows."""
     payload = data if isinstance(data, dict) else {}
-    topic_1 = str(topics[1]) if len(topics) > 1 else ""
-    topic_2 = str(topics[2]) if len(topics) > 2 else ""
+    topic_1 = str(topics[1]).strip() if len(topics) > 1 else ""
+    topic_2 = str(topics[2]).strip() if len(topics) > 2 else ""
 
     if event_type == "KycVerified":
         wallet = topic_1
         upsert_tracked_borrower(wallet)
-        return {
-            "event_id": event_id,
-            "tx_hash": tx_hash,
-            "ledger": ledger,
-            "timestamp_ist": timestamp_ist,
-            "wallet_address": wallet,
-            "counterparty": topic_2 or "SEP12_ANCHOR",
-            "tx_category": "KYC_VERIFIED",
-            "event_type": event_type,
-            "gross_amount_usdc": 0.0,
-            "pool_allocated_usdc": 0.0,
-            "user_net_usdc": 0.0,
-            "fee_or_yield_usdc": 0.0,
-            "remaining_debt_usdc": 0.0,
-            "credit_tier": 0,
-            "status": "VERIFIED",
-        }
+        return [
+            {
+                "event_id": event_id,
+                "tx_hash": tx_hash,
+                "ledger": ledger,
+                "timestamp_ist": timestamp_ist,
+                "wallet_address": wallet,
+                "counterparty": topic_2 or "SEP12_ANCHOR",
+                "tx_category": "KYC_VERIFIED",
+                "event_type": event_type,
+                "gross_amount_usdc": 0.0,
+                "pool_allocated_usdc": 0.0,
+                "user_net_usdc": 0.0,
+                "fee_or_yield_usdc": 0.0,
+                "remaining_debt_usdc": 0.0,
+                "credit_tier": 0,
+                "status": "VERIFIED",
+            }
+        ]
 
     if event_type == "RemittanceLogged":
-        wallet = topic_1
-        sender = topic_2
+        beneficiary = topic_1.upper()
+        sender = topic_2.upper()
         gross = _stroops_to_usdc(payload.get("gross_amount") or payload.get("total_amount"))
         remit_fee = _stroops_to_usdc(payload.get("remit_fee", 0))
         net = _stroops_to_usdc(payload.get("net_amount")) if "net_amount" in payload else gross
         tier = int(payload.get("credit_tier", 0))
-        upsert_tracked_borrower(wallet)
+        upsert_tracked_borrower(beneficiary)
         try:
-            update_kyc_standing(wallet_address=wallet, credit_tier=tier)
+            update_kyc_standing(wallet_address=beneficiary, credit_tier=tier)
         except Exception as exc:
-            logger.debug("Skipped tier sync for unregistered remittance recipient %s: %s", wallet, exc)
+            logger.debug(
+                "Skipped tier sync for unregistered remittance recipient %s: %s",
+                beneficiary,
+                exc,
+            )
 
-        return {
-            "event_id": event_id,
-            "tx_hash": tx_hash,
-            "ledger": ledger,
-            "timestamp_ist": timestamp_ist,
-            "wallet_address": wallet,
-            "counterparty": sender or "REMIT_SENDER",
-            "tx_category": "REMITTANCE_IN",
-            "event_type": event_type,
-            "gross_amount_usdc": gross,
-            "pool_allocated_usdc": remit_fee,
-            "user_net_usdc": net,
-            "fee_or_yield_usdc": remit_fee,
-            "remaining_debt_usdc": 0.0,
-            "credit_tier": tier,
-            "status": "CONFIRMED",
-        }
+        rows: List[Dict[str, Any]] = [
+            {
+                "event_id": event_id,
+                "tx_hash": tx_hash,
+                "ledger": ledger,
+                "timestamp_ist": timestamp_ist,
+                "wallet_address": beneficiary,
+                "counterparty": sender or "REMIT_SENDER",
+                "tx_category": "REMITTANCE_IN",
+                "event_type": event_type,
+                "gross_amount_usdc": gross,
+                "pool_allocated_usdc": remit_fee,
+                "user_net_usdc": net,
+                "fee_or_yield_usdc": remit_fee,
+                "remaining_debt_usdc": 0.0,
+                "credit_tier": tier,
+                "status": "CONFIRMED",
+            }
+        ]
+
+        # Emit a companion sender-side ledger record so the sender's wallet history logs outgoing wires
+        if StrKey.is_valid_ed25519_public_key(sender) and sender != beneficiary:
+            rows.append(
+                {
+                    "event_id": f"{event_id}-out",
+                    "tx_hash": tx_hash,
+                    "ledger": ledger,
+                    "timestamp_ist": timestamp_ist,
+                    "wallet_address": sender,
+                    "counterparty": beneficiary,
+                    "tx_category": "REMITTANCE_OUT",
+                    "event_type": event_type,
+                    "gross_amount_usdc": gross,
+                    "pool_allocated_usdc": remit_fee,
+                    "user_net_usdc": round(-gross, 4),
+                    "fee_or_yield_usdc": remit_fee,
+                    "remaining_debt_usdc": 0.0,
+                    "credit_tier": 0,
+                    "status": "SENT",
+                }
+            )
+
+        return rows
 
     if event_type == "RemitFeeCollected":
         wallet = topic_1
         fee_amount = _stroops_to_usdc(payload.get("fee_amount"))
-        return {
-            "event_id": event_id,
-            "tx_hash": tx_hash,
-            "ledger": ledger,
-            "timestamp_ist": timestamp_ist,
-            "wallet_address": wallet,
-            "counterparty": "BACKSTOP_RESERVE",
-            "tx_category": "REMIT_FEE_BACKSTOP",
-            "event_type": event_type,
-            "gross_amount_usdc": fee_amount,
-            "pool_allocated_usdc": fee_amount,
-            "user_net_usdc": 0.0,
-            "fee_or_yield_usdc": fee_amount,
-            "remaining_debt_usdc": 0.0,
-            "credit_tier": 0,
-            "status": "BACKSTOP_FUNDED",
-        }
+        return [
+            {
+                "event_id": event_id,
+                "tx_hash": tx_hash,
+                "ledger": ledger,
+                "timestamp_ist": timestamp_ist,
+                "wallet_address": wallet,
+                "counterparty": "BACKSTOP_RESERVE",
+                "tx_category": "REMIT_FEE_BACKSTOP",
+                "event_type": event_type,
+                "gross_amount_usdc": fee_amount,
+                "pool_allocated_usdc": fee_amount,
+                "user_net_usdc": 0.0,
+                "fee_or_yield_usdc": fee_amount,
+                "remaining_debt_usdc": 0.0,
+                "credit_tier": 0,
+                "status": "BACKSTOP_FUNDED",
+            }
+        ]
 
     if event_type == "WaterfallRepaid":
         wallet = topic_1
@@ -161,23 +195,25 @@ def _map_event_to_sheet_row(
             except Exception:
                 pass
 
-        return {
-            "event_id": event_id,
-            "tx_hash": tx_hash,
-            "ledger": ledger,
-            "timestamp_ist": timestamp_ist,
-            "wallet_address": wallet,
-            "counterparty": "LP_VAULT",
-            "tx_category": "WATERFALL_REPAY",
-            "event_type": event_type,
-            "gross_amount_usdc": round(repaid + forwarded, 4),
-            "pool_allocated_usdc": repaid,
-            "user_net_usdc": forwarded,
-            "fee_or_yield_usdc": 0.0,
-            "remaining_debt_usdc": remaining,
-            "credit_tier": 0,
-            "status": "LOAN_CLOSED" if closed else "PARTIAL_REPAID",
-        }
+        return [
+            {
+                "event_id": event_id,
+                "tx_hash": tx_hash,
+                "ledger": ledger,
+                "timestamp_ist": timestamp_ist,
+                "wallet_address": wallet,
+                "counterparty": "LP_VAULT",
+                "tx_category": "WATERFALL_REPAY",
+                "event_type": event_type,
+                "gross_amount_usdc": round(repaid + forwarded, 4),
+                "pool_allocated_usdc": repaid,
+                "user_net_usdc": forwarded,
+                "fee_or_yield_usdc": 0.0,
+                "remaining_debt_usdc": remaining,
+                "credit_tier": 0,
+                "status": "LOAN_CLOSED" if closed else "PARTIAL_REPAID",
+            }
+        ]
 
     if event_type == "DirectRepaid":
         wallet = topic_1
@@ -191,23 +227,25 @@ def _map_event_to_sheet_row(
             except Exception:
                 pass
 
-        return {
-            "event_id": event_id,
-            "tx_hash": tx_hash,
-            "ledger": ledger,
-            "timestamp_ist": timestamp_ist,
-            "wallet_address": wallet,
-            "counterparty": "LP_VAULT",
-            "tx_category": "DIRECT_REPAY",
-            "event_type": event_type,
-            "gross_amount_usdc": repaid,
-            "pool_allocated_usdc": repaid,
-            "user_net_usdc": 0.0,
-            "fee_or_yield_usdc": 0.0,
-            "remaining_debt_usdc": remaining,
-            "credit_tier": 0,
-            "status": "LOAN_CLOSED" if closed else "PARTIAL_REPAID",
-        }
+        return [
+            {
+                "event_id": event_id,
+                "tx_hash": tx_hash,
+                "ledger": ledger,
+                "timestamp_ist": timestamp_ist,
+                "wallet_address": wallet,
+                "counterparty": "LP_VAULT",
+                "tx_category": "DIRECT_REPAY",
+                "event_type": event_type,
+                "gross_amount_usdc": repaid,
+                "pool_allocated_usdc": repaid,
+                "user_net_usdc": 0.0,
+                "fee_or_yield_usdc": 0.0,
+                "remaining_debt_usdc": remaining,
+                "credit_tier": 0,
+                "status": "LOAN_CLOSED" if closed else "PARTIAL_REPAID",
+            }
+        ]
 
     if event_type == "LoanDisbursed":
         wallet = topic_1
@@ -217,45 +255,49 @@ def _map_event_to_sheet_row(
         tier = int(payload.get("credit_tier", 1))
         upsert_tracked_borrower(wallet)
 
-        return {
-            "event_id": event_id,
-            "tx_hash": tx_hash,
-            "ledger": ledger,
-            "timestamp_ist": timestamp_ist,
-            "wallet_address": wallet,
-            "counterparty": "LP_VAULT",
-            "tx_category": "INSTANT_BORROW",
-            "event_type": event_type,
-            "gross_amount_usdc": principal,
-            "pool_allocated_usdc": round(-principal, 4),
-            "user_net_usdc": principal,
-            "fee_or_yield_usdc": fee,
-            "remaining_debt_usdc": total_owed,
-            "credit_tier": tier,
-            "status": "ACTIVE_LOAN",
-        }
+        return [
+            {
+                "event_id": event_id,
+                "tx_hash": tx_hash,
+                "ledger": ledger,
+                "timestamp_ist": timestamp_ist,
+                "wallet_address": wallet,
+                "counterparty": "LP_VAULT",
+                "tx_category": "INSTANT_BORROW",
+                "event_type": event_type,
+                "gross_amount_usdc": principal,
+                "pool_allocated_usdc": round(-principal, 4),
+                "user_net_usdc": principal,
+                "fee_or_yield_usdc": fee,
+                "remaining_debt_usdc": total_owed,
+                "credit_tier": tier,
+                "status": "ACTIVE_LOAN",
+            }
+        ]
 
     if event_type == "OverdueStrikeAdded":
         wallet = topic_1
         strikes = int(payload.get("late_periods", 1))
         new_remaining = _stroops_to_usdc(payload.get("new_remaining_balance"))
-        return {
-            "event_id": event_id,
-            "tx_hash": tx_hash,
-            "ledger": ledger,
-            "timestamp_ist": timestamp_ist,
-            "wallet_address": wallet,
-            "counterparty": "RISK_ENGINE",
-            "tx_category": "OVERDUE_STRIKE",
-            "event_type": event_type,
-            "gross_amount_usdc": new_remaining,
-            "pool_allocated_usdc": 0.0,
-            "user_net_usdc": 0.0,
-            "fee_or_yield_usdc": 0.0,
-            "remaining_debt_usdc": new_remaining,
-            "credit_tier": 0,
-            "status": f"STRIKE_{strikes}_OF_6",
-        }
+        return [
+            {
+                "event_id": event_id,
+                "tx_hash": tx_hash,
+                "ledger": ledger,
+                "timestamp_ist": timestamp_ist,
+                "wallet_address": wallet,
+                "counterparty": "RISK_ENGINE",
+                "tx_category": "OVERDUE_STRIKE",
+                "event_type": event_type,
+                "gross_amount_usdc": new_remaining,
+                "pool_allocated_usdc": 0.0,
+                "user_net_usdc": 0.0,
+                "fee_or_yield_usdc": 0.0,
+                "remaining_debt_usdc": new_remaining,
+                "credit_tier": 0,
+                "status": f"STRIKE_{strikes}_OF_6",
+            }
+        ]
 
     if event_type == "LoanDefaulted":
         wallet = topic_1
@@ -272,23 +314,25 @@ def _map_event_to_sheet_row(
         except Exception as exc:
             logger.error("Failed to mark defaulted borrower %s as BANNED in Sheets: %s", wallet, exc)
 
-        return {
-            "event_id": event_id,
-            "tx_hash": tx_hash,
-            "ledger": ledger,
-            "timestamp_ist": timestamp_ist,
-            "wallet_address": wallet,
-            "counterparty": "BACKSTOP_RESERVE",
-            "tx_category": "LOAN_DEFAULT",
-            "event_type": event_type,
-            "gross_amount_usdc": defaulted_debt,
-            "pool_allocated_usdc": covered,
-            "user_net_usdc": 0.0,
-            "fee_or_yield_usdc": covered,
-            "remaining_debt_usdc": defaulted_debt,
-            "credit_tier": 0,
-            "status": "BANNED_6_STRIKES",
-        }
+        return [
+            {
+                "event_id": event_id,
+                "tx_hash": tx_hash,
+                "ledger": ledger,
+                "timestamp_ist": timestamp_ist,
+                "wallet_address": wallet,
+                "counterparty": "BACKSTOP_RESERVE",
+                "tx_category": "LOAN_DEFAULT",
+                "event_type": event_type,
+                "gross_amount_usdc": defaulted_debt,
+                "pool_allocated_usdc": covered,
+                "user_net_usdc": 0.0,
+                "fee_or_yield_usdc": covered,
+                "remaining_debt_usdc": defaulted_debt,
+                "credit_tier": 0,
+                "status": "BANNED_6_STRIKES",
+            }
+        ]
 
     if event_type == "AccountRehabilitated":
         wallet = topic_1
@@ -311,23 +355,25 @@ def _map_event_to_sheet_row(
                 exc,
             )
 
-        return {
-            "event_id": event_id,
-            "tx_hash": tx_hash,
-            "ledger": ledger,
-            "timestamp_ist": timestamp_ist,
-            "wallet_address": wallet,
-            "counterparty": "BACKSTOP_RESERVE",
-            "tx_category": "ACCOUNT_REHABILITATED",
-            "event_type": event_type,
-            "gross_amount_usdc": total_to_backstop,
-            "pool_allocated_usdc": total_to_backstop,
-            "user_net_usdc": 0.0,
-            "fee_or_yield_usdc": penalty_paid,
-            "remaining_debt_usdc": 0.0,
-            "credit_tier": 0,
-            "status": "BAN_LIFTED_RESET",
-        }
+        return [
+            {
+                "event_id": event_id,
+                "tx_hash": tx_hash,
+                "ledger": ledger,
+                "timestamp_ist": timestamp_ist,
+                "wallet_address": wallet,
+                "counterparty": "BACKSTOP_RESERVE",
+                "tx_category": "ACCOUNT_REHABILITATED",
+                "event_type": event_type,
+                "gross_amount_usdc": total_to_backstop,
+                "pool_allocated_usdc": total_to_backstop,
+                "user_net_usdc": 0.0,
+                "fee_or_yield_usdc": penalty_paid,
+                "remaining_debt_usdc": 0.0,
+                "credit_tier": 0,
+                "status": "BAN_LIFTED_RESET",
+            }
+        ]
 
     if event_type == "LiquidityUpdated":
         provider = topic_1
@@ -335,25 +381,27 @@ def _map_event_to_sheet_row(
         amount = _stroops_to_usdc(payload.get("asset_amount"))
         shares = _stroops_to_usdc(payload.get("shares_delta"))
 
-        return {
-            "event_id": event_id,
-            "tx_hash": tx_hash,
-            "ledger": ledger,
-            "timestamp_ist": timestamp_ist,
-            "wallet_address": provider,
-            "counterparty": "LP_VAULT",
-            "tx_category": "LP_SUPPLY" if is_deposit else "LP_WITHDRAW",
-            "event_type": event_type,
-            "gross_amount_usdc": amount,
-            "pool_allocated_usdc": amount if is_deposit else round(-amount, 4),
-            "user_net_usdc": 0.0 if is_deposit else amount,
-            "fee_or_yield_usdc": shares,
-            "remaining_debt_usdc": 0.0,
-            "credit_tier": 0,
-            "status": "CONFIRMED",
-        }
+        return [
+            {
+                "event_id": event_id,
+                "tx_hash": tx_hash,
+                "ledger": ledger,
+                "timestamp_ist": timestamp_ist,
+                "wallet_address": provider,
+                "counterparty": "LP_VAULT",
+                "tx_category": "LP_SUPPLY" if is_deposit else "LP_WITHDRAW",
+                "event_type": event_type,
+                "gross_amount_usdc": amount,
+                "pool_allocated_usdc": amount if is_deposit else round(-amount, 4),
+                "user_net_usdc": 0.0 if is_deposit else amount,
+                "fee_or_yield_usdc": shares,
+                "remaining_debt_usdc": 0.0,
+                "credit_tier": 0,
+                "status": "CONFIRMED",
+            }
+        ]
 
-    return None
+    return []
 
 
 def poll_contract_events() -> int:
@@ -370,7 +418,7 @@ def poll_contract_events() -> int:
         logger.warning("Failed to fetch latest ledger from Soroban RPC: %s", exc)
         return 0
 
-    saved_cursor = get_kv(cursor_key)
+    saved_cursor = get_kv(cursor_key) or get_kv("last_indexed_ledger")
     if saved_cursor is not None:
         start_ledger = int(saved_cursor) + 1
     else:
@@ -426,7 +474,7 @@ def poll_contract_events() -> int:
         )
         timestamp_ist = _iso_to_ist(ledger_closed_at)
 
-        row = _map_event_to_sheet_row(
+        mapped_rows = _map_event_to_sheet_rows(
             event_id=str(ev.id),
             tx_hash=tx_hash,
             ledger=int(ev.ledger),
@@ -435,8 +483,8 @@ def poll_contract_events() -> int:
             topics=decoded_topics,
             data=decoded_value,
         )
-        if row:
-            sheet_rows.append(row)
+        if mapped_rows:
+            sheet_rows.extend(mapped_rows)
 
     inserted = 0
     if sheet_rows:
@@ -448,6 +496,7 @@ def poll_contract_events() -> int:
 
     highest_ledger = max([int(e.ledger) for e in events], default=latest_ledger)
     set_kv(cursor_key, str(highest_ledger))
+    set_kv("last_indexed_ledger", str(highest_ledger))
 
     if inserted > 0:
         logger.info("Logged %d new Soroban events to Google Sheets up to ledger %d", inserted, highest_ledger)
